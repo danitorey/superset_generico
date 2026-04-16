@@ -1,4 +1,3 @@
-
 # Plataforma de Datos OLTP → CDC → OLAP → BI
 
 ## 1. Objetivo
@@ -26,25 +25,23 @@ PostgreSQL → Debezium → Redpanda (Kafka) → ClickHouse → Superset
 
 ## 3. Diagrama de Arquitectura
 
-```
 Usuarios / Apps
-      |
-      v
- PostgreSQL (OLTP)
-      |
-      |  CDC (logical replication)
-      v
-   Debezium
-      |
-      v
-   Redpanda (Kafka)
-      |
-      v
-  ClickHouse (OLAP)
-      |
-      v
-   Superset (BI)
-```
+|
+v
+PostgreSQL (OLTP)
+|
+| CDC (logical replication)
+v
+Debezium
+|
+v
+Redpanda (Kafka)
+|
+v
+ClickHouse (OLAP)
+|
+v
+Superset (BI)
 
 ---
 
@@ -69,28 +66,28 @@ Usuarios / Apps
 
 ## 5. Estructura de Directorios
 
-```
 data-platform/
 │
 ├── docker-compose.yml
+├── Dockerfile.superset
 ├── .env
+├── setup.sh
 ├── README.md
 │
 ├── postgres/
-│   └── init/
-│       └── 01_init.sql
+│ └── init/
+│ └── 01_init.sql
 │
 ├── clickhouse/
-│   └── init/
-│       └── 01_tables.sql
+│ └── init/
+│ └── 01_tables.sql
 │
 ├── superset/
-│   ├── superset_config.py
-│   └── init.sh
+│ ├── superset_config.py
+│ └── init.sh
 │
 └── debezium/
-    └── (conectores se crean vía API)
-```
+└── (conectores se crean vía API)
 
 ---
 
@@ -99,22 +96,5 @@ data-platform/
 ```bash
 git clone <repo>
 cd data-platform
-docker compose up -d
-```
-
----
-
-## 7. URLs de Validación
-
-- Superset: http://localhost:8088
-- Debezium: http://localhost:8083
-- ClickHouse: http://localhost:18123
-
----
-
-## 8. Principios de Diseño
-- CDC real, no batch
-- Append-only en ClickHouse
-- Cache controlado en Superset
-- Infraestructura como código
-- Reproducibilidad total
+chmod +x setup.sh
+./setup.sh

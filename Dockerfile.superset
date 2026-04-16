@@ -1,0 +1,10 @@
+FROM apache/superset:6.0.0
+
+USER root
+
+# Instalar pip en el .venv y luego clickhouse-connect
+RUN /app/.venv/bin/python -m ensurepip && \
+    /app/.venv/bin/pip install --no-cache-dir clickhouse-connect
+
+USER superset
+
