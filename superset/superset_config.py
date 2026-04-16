@@ -1,0 +1,10 @@
+CACHE_CONFIG = {
+    "CACHE_TYPE": "RedisCache",
+    "CACHE_REDIS_HOST": "redis",
+    "CACHE_REDIS_PORT": 6379,
+    "CACHE_DEFAULT_TIMEOUT": 300
+}
+
+FEATURE_FLAGS = {
+    "DASHBOARD_CROSS_FILTERS": True
+}
