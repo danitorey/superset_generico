@@ -2,9 +2,12 @@ FROM apache/superset:6.0.0
 
 USER root
 
-# Instalar pip en el .venv y luego clickhouse-connect
-RUN /app/.venv/bin/python -m ensurepip && \
-    /app/.venv/bin/pip install --no-cache-dir clickhouse-connect
+# Instalar drivers
+RUN pip install --no-cache-dir clickhouse-connect psycopg2-binary
+
+# Copiar al .venv
+RUN cp -r /usr/local/lib/python3.10/site-packages/clickhouse_connect* /app/.venv/lib/python3.10/site-packages/ && \
+    cp -r /usr/local/lib/python3.10/site-packages/lz4* /app/.venv/lib/python3.10/site-packages/ && \
+    cp -r /usr/local/lib/python3.10/site-packages/psycopg2* /app/.venv/lib/python3.10/site-packages/
 
 USER superset
-
