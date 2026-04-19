@@ -1,62 +1,100 @@
-# Data Platform – OLTP → CDC → OLAP → BI
+# Plataforma de Datos OLTP → CDC → OLAP → BI
 
-Plataforma de datos end-to-end lista para usar que habilita ingestión en tiempo real, analítica de alto rendimiento y visualización self-service, desplegable con un solo comando.
-
-Arquitectura completa:
-PostgreSQL (OLTP) → Debezium (CDC) → Redpanda (Kafka) → ClickHouse (OLAP) → Superset (BI)
-
----
-
-## 🚀 Características Clave
-
-- CDC en tiempo real (no batch)
-- Arquitectura event-driven
-- ClickHouse append-only para máximo performance
-- BI self-service con Superset
-- Cache distribuido con Redis
-- Infraestructura como código (Docker)
-- Reproducible y portable
+## 1. Objetivo
+Diseñar e implementar una plataforma de datos moderna que permita:
+- Replicar datos desde PostgreSQL (OLTP) en tiempo casi real
+- Desacoplar completamente la carga analítica del sistema transaccional
+- Acelerar consultas con ClickHouse (OLAP)
+- Visualizar información con Superset de forma segura y cacheada
+- Garantizar reproducibilidad mediante Docker
 
 ---
 
-## 🏗️ Arquitectura
+## 2. Arquitectura General
 
+PostgreSQL → Debezium → Redpanda (Kafka) → ClickHouse → Superset
+
+### Capas
+1. **Origen (OLTP)**: PostgreSQL 16
+2. **CDC / Transporte**: Debezium Connect
+3. **Streaming**: Redpanda (Kafka-compatible)
+4. **Analítica (OLAP)**: ClickHouse
+5. **Visualización (BI)**: Superset 6.0 + Redis
+
+---
+
+## 3. Diagrama de Arquitectura
+
+Usuarios / Apps
+|
+v
 PostgreSQL (OLTP)
-→ Debezium (CDC)
-→ Redpanda (Kafka)
-→ ClickHouse (OLAP)
-→ Superset (BI)
+|
+| CDC (logical replication)
+v
+Debezium
+|
+v
+Redpanda (Kafka)
+|
+v
+ClickHouse (OLAP)
+|
+v
+Superset (BI)
 
 ---
 
-## 📋 Requisitos
+## 4. Requisitos de Infraestructura
 
-- Docker 20.10+
-- Docker Compose 2.0+
-- 8 GB RAM mínimo (16 GB recomendado)
+### Mínimos (dev / pruebas)
+- CPU: 4 cores
+- RAM: 8 GB
+- Disco: 50 GB SSD
+
+### Recomendados (QA / pre-prod)
+- CPU: 8 cores
+- RAM: 16 GB
+- Disco: 100 GB SSD
+
+### Producción inicial
+- CPU: 16 cores
+- RAM: 32 GB
+- Disco: 300 GB SSD (IOPS altos)
 
 ---
 
-## ⚡ Instalación Rápida
+## 5. Estructura de Directorios
+
+data-platform/
+│
+├── docker-compose.yml
+├── Dockerfile.superset
+├── .env
+├── setup.sh
+├── README.md
+│
+├── postgres/
+│ └── init/
+│ └── 01_init.sql
+│
+├── clickhouse/
+│ └── init/
+│ └── 01_tables.sql
+│
+├── superset/
+│ ├── superset_config.py
+│ └── init.sh
+│
+└── debezium/
+└── (conectores se crean vía API)
+
+---
+
+## 6. Instalación
 
 ```bash
-git clone <tu-repositorio>
+git clone <repo>
 cd data-platform
-docker compose up -d
-```
-
-Superset: http://localhost:8088  
-Usuario: admin / admin
-
----
-
-## ✅ Validación
-
-```bash
-docker exec -it superset python -c "import clickhouse_connect; print('ClickHouse OK')"
-docker exec -it superset python -c "import psycopg2; print('PostgreSQL OK')"
-```
-
----
-
-✅ Plataforma lista para desarrollo, demo o pruebas de concepto.
+chmod +x setup.sh
+./setup.sh
