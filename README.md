@@ -43,7 +43,8 @@ H --> F
 | 6. Vistas y tablas genéricas | En progreso | Estandarización de modelos y plantillas de datos dummy |
 | 7. Tableros ejecutivos | En progreso | Dashboards reutilizables para usuarios finales |
 | 8. IA en Superset | Futuro | Asistente para consultas, resúmenes y generación de insights |
-| 9. Automatización avanzada | Futuro | Alertas, reportes programados y monitoreo |
+| 9. Automatización avanzada | Futuro | Alertas, reportes programados y monitoreo del pipeline |
+| 10. Seguridad y accesos | Futuro | Keycloak para autenticación centralizada y API Gateway como punto de entrada único |
 
 ## Modelo de vistas y tablas
 
@@ -84,10 +85,30 @@ La idea es separar la capa operativa de la capa analítica. En PostgreSQL viven 
 
 Este ejemplo usa una tabla dummy `dim_producto` para mostrar el flujo completo desde PostgreSQL hasta ClickHouse, incluyendo INSERT, UPDATE y DELETE en tiempo real.
 
+### PASO 0 — Habilitar WAL lógico en PostgreSQL
+
+> Solo se hace una vez por servidor.
+
+```sql
+ALTER SYSTEM SET wal_level = logical;
+ALTER SYSTEM SET max_replication_slots = 10;
+ALTER SYSTEM SET max_wal_senders = 10;
+```
+
+Después reiniciar PostgreSQL:
+
+```bash
+# Si es servicio del sistema:
+sudo systemctl restart postgresql
+
+# Si corre en Docker:
+docker restart postgres
+```
+
 ### PASO 1 — Crear la tabla en PostgreSQL y habilitar replicación
 
 ```sql
--- Crear tabla en PostgreSQL
+-- 1.1 Crear tabla
 CREATE TABLE public.dim_producto (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     nombre      VARCHAR(100) NOT NULL,
@@ -96,16 +117,17 @@ CREATE TABLE public.dim_producto (
     activo      BOOLEAN DEFAULT true
 );
 
--- Insertar datos dummy
-INSERT INTO public.dim_producto (nombre, categoria, precio) VALUES
-    ('Laptop Pro 15',   'Electronica',  25999.99),
-    ('Mouse Inalambrico','Accesorios',    349.00),
-    ('Teclado Mecanico','Accesorios',    899.50),
-    ('Monitor 27"',     'Electronica',  8499.00),
-    ('Webcam HD',       'Accesorios',   1299.00);
-
--- Habilitar captura completa de cambios para Debezium
+-- 1.2 Habilitar captura completa ANTES de insertar datos
+-- Sin esto, Debezium no captura UPDATE ni DELETE correctamente
 ALTER TABLE public.dim_producto REPLICA IDENTITY FULL;
+
+-- 1.3 Insertar datos dummy
+INSERT INTO public.dim_producto (nombre, categoria, precio) VALUES
+    ('Laptop Pro 15',    'Electronica', 25999.99),
+    ('Mouse Inalambrico','Accesorios',    349.00),
+    ('Teclado Mecanico', 'Accesorios',    899.50),
+    ('Monitor 27"',      'Electronica',  8499.00),
+    ('Webcam HD',        'Accesorios',   1299.00);
 ```
 
 ### PASO 2 — Registrar el conector Debezium
@@ -221,8 +243,8 @@ Ejecuta estos cambios en PostgreSQL y verifica en ClickHouse después de cada un
 
 ```sql
 -- INSERT: agregar un nuevo producto
-INSERT INTO public.dim_producto (nombre, categoria, precio)
-VALUES ('Audífonos Bluetooth', 'Accesorios', 1599.00);
+INSERT INTO public.dim_producto (id, nombre, categoria, precio)
+VALUES (gen_random_uuid(), 'Audífonos Bluetooth', 'Accesorios', 1599.00);
 
 -- UPDATE: modificar el precio de un producto existente
 UPDATE public.dim_producto
@@ -302,8 +324,10 @@ docker compose up -d
 
 ## Futuros complementos
 
-- Asistente IA dentro de Superset
+- Automatización de alertas y reportes programados
+- Asistente IA dentro de Superset para consultas en lenguaje natural
+- Keycloak para autenticación centralizada y control de roles
+- API Gateway como punto de entrada único y seguro
 - Datasets reutilizables por área de negocio
 - Vistas materializadas para KPIs
-- Alertas automáticas
 - Catálogo de métricas
