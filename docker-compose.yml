@@ -14,9 +14,21 @@ services:
       -c wal_level=logical
       -c max_replication_slots=10
       -c max_wal_senders=10
+      -c max_slot_wal_keep_size=1024
+      -c wal_keep_size=256
     networks:
       - data_platform_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   redpanda:
     image: redpandadata/redpanda:v23.3.10
@@ -32,18 +44,32 @@ services:
       - --check=false
       - --kafka-addr PLAINTEXT://0.0.0.0:9092
       - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+      - --set redpanda.log_segment_size=67108864
+      - --set redpanda.retention_bytes=1073741824
     ports:
       - "9092:9092"
     networks:
       - data_platform_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   debezium:
     image: debezium/connect:2.5
     container_name: debezium
     depends_on:
-      - postgres
-      - redpanda
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
     ports:
       - "8083:8083"
     environment:
@@ -52,9 +78,23 @@ services:
       CONFIG_STORAGE_TOPIC: debezium_configs
       OFFSET_STORAGE_TOPIC: debezium_offsets
       STATUS_STORAGE_TOPIC: debezium_statuses
+      CONNECT_PRODUCER_MAX_REQUEST_SIZE: 10485760
+      CONNECT_CONSUMER_MAX_PARTITION_FETCH_BYTES: 10485760
+      CONNECT_CONSUMER_FETCH_MAX_BYTES: 52428800
+      CONNECT_PRODUCER_COMPRESSION_TYPE: lz4
     networks:
       - data_platform_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/ | grep -q version"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -68,6 +108,16 @@ services:
     networks:
       - data_platform_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q Ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
 
   redis:
     image: redis:7
@@ -75,6 +125,11 @@ services:
     networks:
       - data_platform_network
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   superset:
     build:
@@ -85,8 +140,10 @@ services:
     ports:
       - "8088:8088"
     depends_on:
-      - clickhouse
-      - redis
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_started
     volumes:
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py
       - ./superset/init.sh:/app/init.sh
@@ -94,6 +151,54 @@ services:
       - data_platform_network
     restart: unless-stopped
     command: ["/bin/sh", "/app/init.sh"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  init:
+    image: postgres:16
+    container_name: platform_init
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      debezium:
+        condition: service_healthy
+    volumes:
+      - ./sql:/sql
+      - ./sh:/sh
+    environment:
+      PGPASSWORD: postgres123
+    networks:
+      - data_platform_network
+    restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "1"
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        echo "⏳ Iniciando configuración de la plataforma..."
+
+        echo "📦 Creando tablas dummy en PostgreSQL..."
+        psql -h postgres -U postgres -d postgres -f /sql/01_postgres_dummy.sql
+        echo "✅ PostgreSQL listo"
+
+        echo "🏗️  Creando estructuras en ClickHouse..."
+        curl -sf http://clickhouse:8123/ --data-binary @/sql/02_clickhouse_dummy.sql
+        echo "✅ ClickHouse listo"
+
+        echo "🔌 Registrando conectores Debezium..."
+        bash /sh/03_debezium_connectors.sh
+        echo "✅ Debezium listo"
+
+        echo ""
+        echo "🚀 Plataforma lista!"
 
 networks:
   data_platform_network:
