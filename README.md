@@ -287,8 +287,7 @@ Superset consulta la vista limpia y grafica
 ```bash
 git clone <repo>
 cd data-platform
-chmod +x setup.sh
-./setup.sh
+docker compose up -d
 ```
 
 ## Accesos
