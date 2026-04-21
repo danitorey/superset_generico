@@ -46,38 +46,108 @@ H --> F
 | 9. Automatización avanzada | Futuro | Alertas, reportes programados y monitoreo del pipeline |
 | 10. Seguridad y accesos | Futuro | Keycloak para autenticación centralizada y API Gateway como punto de entrada único |
 
+## Estructura del repositorio
+
+```
+data-platform/
+├── docker-compose.yml          # Orquestación de contenedores
+├── .env                        # Variables de entorno
+├── README.md                   # Este archivo
+├── setup.sh                    # Script de instalación inicial
+│
+├── sql/
+│   ├── 01_postgres_dummy.sql   # Tablas dummy e inserts en PostgreSQL
+│   └── 02_clickhouse_dummy.sql # Estructuras en ClickHouse (tabla + kafka + MV + vista)
+│
+└── sh/
+    └── 03_debezium_connectors.sh  # Registro de conectores CDC en Debezium
+```
+
 ## Modelo de vistas y tablas
 
 La idea es separar la capa operativa de la capa analítica. En PostgreSQL viven las tablas de origen y vistas de negocio; en ClickHouse viven tablas espejo o desnormalizadas para consumo rápido.
 
-### Tablas base
+### Tablas dummy incluidas
 
-- Tablas transaccionales en PostgreSQL.
-- Tablas analíticas en ClickHouse con nombres equivalentes o prefijos claros.
-- Datos dummy para pruebas y demostraciones.
+| Tabla | Tipo | Descripción |
+|---|---|---|
+| `analytics.dim_clientes` | Dimensión | Catálogo de clientes con sector, región y tipo |
+| `analytics.dim_productos` | Dimensión | Catálogo de productos o servicios con categoría y precio |
+| `analytics.dim_empleados` | Dimensión | Catálogo de empleados con área, puesto y nivel |
+| `analytics.fact_ventas` | Hecho | Transacciones de venta por cliente, producto y empleado |
+| `analytics.fact_operaciones` | Hecho | Tickets, trámites e incidencias con tiempos y estatus |
+| `analytics.fact_presupuesto` | Hecho | Presupuesto asignado vs ejercido por área y mes |
 
-### Vistas sugeridas
+### Vistas en ClickHouse
 
-- `vw_resumen_operativo`
-- `vw_kpis_diarios`
-- `vw_movimientos_mensuales`
-- `vw_dashboard_ejecutivo`
+Cada tabla tiene una vista limpia lista para conectar en Superset:
 
-### Tablas dummy sugeridas
+- `analytics.vw_dim_clientes`
+- `analytics.vw_dim_productos`
+- `analytics.vw_dim_empleados`
+- `analytics.vw_fact_ventas`
+- `analytics.vw_fact_operaciones`
+- `analytics.vw_fact_presupuesto`
 
-- `dim_usuarios`
-- `dim_producto`
-- `dim_fecha`
-- `fact_ventas`
-- `fact_eventos`
+> Todas las vistas aplican `FINAL` y filtran `__deleted = 0` automáticamente.
 
-## Dashboards genéricos sugeridos
+### Dashboards genéricos incluidos
 
-- Resumen ejecutivo
-- Operación diaria
-- Tendencias por periodo
-- Calidad de datos
-- Monitoreo de carga CDC
+| # | Dashboard | Descripción |
+|---|---|---|
+| 1 | Resumen Ejecutivo | KPIs principales: ventas, operaciones, presupuesto, headcount |
+| 2 | Ventas y Comercial | Ventas por mes, categoría, región, top clientes, ticket promedio |
+| 3 | Operaciones | Volumen por estatus, tiempos de atención, operaciones por empleado |
+| 4 | Presupuesto | Asignado vs ejercido por área, avance mensual, alertas |
+| 5 | Calidad de Datos | Registros activos vs borrados, última sincronización por tabla |
+| 6 | Recursos Humanos | Headcount por área, distribución por nivel, rotación mensual |
+| 7 | Tendencias y Proyecciones | Comparativo mes a mes, crecimiento acumulado, proyección a 3 meses |
+| 8 | Monitoreo de Plataforma | Estatus CDC, volumen por topic, tablas con más cambios |
+
+---
+
+## Instalación
+
+```bash
+git clone <repo>
+cd data-platform
+docker compose up -d
+```
+
+## Cargar datos dummy
+
+### Paso 1 — Crear tablas en PostgreSQL
+
+```bash
+docker exec -i postgres psql -U postgres -d postgres < sql/01_postgres_dummy.sql
+```
+
+### Paso 2 — Crear estructuras en ClickHouse
+
+Abre el portal web de ClickHouse en `http://localhost:18123` y ejecuta el contenido de:
+
+```
+sql/02_clickhouse_dummy.sql
+```
+
+### Paso 3 — Registrar conectores Debezium
+
+```bash
+chmod +x sh/03_debezium_connectors.sh
+./sh/03_debezium_connectors.sh
+```
+
+Verifica que los 6 conectores quedaron activos:
+
+```bash
+curl -s http://localhost:8083/connectors | python3 -m json.tool
+```
+
+Verifica que los topics se crearon en Redpanda:
+
+```bash
+docker exec -it redpanda rpk topic list | grep analytics
+```
 
 ---
 
@@ -87,7 +157,7 @@ Este ejemplo usa una tabla dummy `dim_producto` para mostrar el flujo completo d
 
 ### PASO 0 — Habilitar WAL lógico en PostgreSQL
 
-> Solo se hace una vez por servidor.
+> Solo se hace una vez por servidor. Si ya fue configurado anteriormente, omitir este paso.
 
 ```sql
 ALTER SYSTEM SET wal_level = logical;
@@ -132,8 +202,6 @@ INSERT INTO public.dim_producto (nombre, categoria, precio) VALUES
 
 ### PASO 2 — Registrar el conector Debezium
 
-Ejecuta esto desde la terminal donde corre tu plataforma:
-
 ```bash
 curl -X POST http://localhost:8083/connectors \
   -H "Content-Type: application/json" \
@@ -143,9 +211,9 @@ curl -X POST http://localhost:8083/connectors \
       "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
       "database.hostname": "postgres",
       "database.port": "5432",
-      "database.user": "admin",
-      "database.password": "admin123",
-      "database.dbname": "analyticsdb",
+      "database.user": "postgres",
+      "database.password": "postgres123",
+      "database.dbname": "postgres",
       "database.server.name": "analytics",
       "topic.prefix": "analytics",
       "schema.include.list": "public",
@@ -164,24 +232,14 @@ curl -X POST http://localhost:8083/connectors \
   }'
 ```
 
-Verificar que el topic se creó en Redpanda:
+Verificar topic y estado:
 
 ```bash
 docker exec -it redpanda rpk topic list | grep dim_producto
-# Esperado:
-# analytics.public.dim_producto   1   1
-```
-
-Verificar que el conector está activo:
-
-```bash
 curl http://localhost:8083/connectors/connector-dim-producto/status
-# Esperado: "state": "RUNNING"
 ```
 
 ### PASO 3 — Crear las estructuras en ClickHouse
-
-Ejecuta los siguientes bloques en el portal web de ClickHouse (`http://localhost:18123`).
 
 **3.1 — Tabla destino final**
 
@@ -219,11 +277,7 @@ SETTINGS kafka_broker_list = 'redpanda:9092',
 ```sql
 CREATE MATERIALIZED VIEW analytics.dim_producto_mv TO analytics.dim_producto
 AS SELECT
-    id,
-    nombre,
-    categoria,
-    precio,
-    activo,
+    id, nombre, categoria, precio, activo,
     if(__deleted = 1, 1, 0) AS __deleted
 FROM analytics.kafka_dim_producto;
 ```
@@ -239,19 +293,17 @@ WHERE __deleted = 0;
 
 ### PASO 4 — Probar INSERT, UPDATE y DELETE
 
-Ejecuta estos cambios en PostgreSQL y verifica en ClickHouse después de cada uno:
-
 ```sql
--- INSERT: agregar un nuevo producto
+-- INSERT
 INSERT INTO public.dim_producto (id, nombre, categoria, precio)
 VALUES (gen_random_uuid(), 'Audífonos Bluetooth', 'Accesorios', 1599.00);
 
--- UPDATE: modificar el precio de un producto existente
+-- UPDATE
 UPDATE public.dim_producto
 SET precio = 27999.99
 WHERE nombre = 'Laptop Pro 15';
 
--- DELETE: dar de baja un producto
+-- DELETE
 DELETE FROM public.dim_producto
 WHERE nombre = 'Webcam HD';
 ```
@@ -259,58 +311,19 @@ WHERE nombre = 'Webcam HD';
 Verificar en ClickHouse:
 
 ```sql
--- Ver todos los registros activos (sin borrados, sin duplicados)
+-- Registros activos
 SELECT * FROM analytics.vw_dim_producto;
 
--- Contar registros activos
+-- Conteo limpio
 SELECT count(*) FROM analytics.dim_producto FINAL WHERE __deleted = 0;
 
--- Ver incluyendo borrados lógicos
+-- Ver borrados lógicos
 SELECT *, __deleted FROM analytics.dim_producto FINAL;
 ```
 
-> **Nota:** Usar siempre `vw_dim_producto` en Superset. La vista aplica `FINAL` y filtra `__deleted = 0` automáticamente, garantizando datos limpios y sin duplicados temporales.
+> **Nota:** Usar siempre la vista `vw_*` en Superset. Aplica `FINAL` y filtra `__deleted = 0` automáticamente.
 
 ---
-
-## Ejemplo de tabla dummy
-
-```sql
-CREATE DATABASE IF NOT EXISTS analytics;
-
-CREATE TABLE analytics.fact_ventas (
-    id         UInt64,
-    fecha      DateTime,
-    usuario    String,
-    categoria  String,
-    monto      Decimal(12,2),
-    estado     String,
-    updated_at DateTime
-) ENGINE = ReplacingMergeTree(updated_at)
-ORDER BY id;
-```
-
-## Ejemplo de flujo de datos
-
-```text
-INSERT / UPDATE / DELETE en PostgreSQL
-   ↓
-Debezium captura el cambio desde el WAL
-   ↓
-Redpanda publica el evento al topic
-   ↓
-ClickHouse consume y almacena via Materialized View
-   ↓
-Superset consulta la vista limpia y grafica
-```
-
-## Instalación
-
-```bash
-git clone <repo>
-cd data-platform
-docker compose up -d
-```
 
 ## Accesos
 
@@ -327,7 +340,6 @@ docker compose up -d
 - Automatización de alertas y reportes programados
 - Asistente IA dentro de Superset para consultas en lenguaje natural
 - Keycloak para autenticación centralizada y control de roles
-- API Gateway como punto de entrada único y seguro
-- Datasets reutilizables por área de negocio
+- API Gateway (Traefik) como punto de entrada único y seguro
 - Vistas materializadas para KPIs
 - Catálogo de métricas
