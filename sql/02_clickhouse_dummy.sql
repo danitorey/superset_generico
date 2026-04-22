@@ -268,3 +268,126 @@ CREATE VIEW IF NOT EXISTS analytics.vw_fact_presupuesto AS
 SELECT id, area, mes, anio, asignado, ejercido, comprometido, estatus, created_at
 FROM analytics.fact_presupuesto FINAL
 WHERE deleted = 0;
+
+CREATE OR REPLACE VIEW analytics.vw_ventas_por_producto AS
+SELECT
+    p.nombre AS nombre_producto,
+    SUM(v.monto) AS total_ventas,
+    COUNT(*) AS num_transacciones
+FROM analytics.fact_ventas v
+INNER JOIN analytics.dim_productos p
+    ON v.id_producto = p.id
+GROUP BY p.nombre
+ORDER BY total_ventas DESC;
+
+CREATE OR REPLACE VIEW analytics.vw_ventas_por_empleado AS
+SELECT
+    e.nombre AS nombre_empleado,
+    SUM(v.monto) AS total_ventas,
+    COUNT(*) AS num_transacciones
+FROM analytics.fact_ventas v
+INNER JOIN analytics.dim_empleados e
+    ON v.id_empleado = e.id
+GROUP BY e.nombre
+ORDER BY total_ventas DESC;
+
+CREATE OR REPLACE VIEW analytics.vw_calidad_datos AS
+SELECT
+    'ventas' AS dominio,
+    toDate(fecha_venta) AS fecha,
+    count() AS filas_totales,
+    countIf(
+        id_cliente IS NOT NULL
+        AND id_producto IS NOT NULL
+        AND id_empleado IS NOT NULL
+        AND cantidad > 0
+        AND monto > 0
+        AND descuento >= 0
+        AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')
+    ) AS filas_validas,
+    countIf(
+        NOT (
+            id_cliente IS NOT NULL
+            AND id_producto IS NOT NULL
+            AND id_empleado IS NOT NULL
+            AND cantidad > 0
+            AND monto > 0
+            AND descuento >= 0
+            AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')
+        )
+    ) AS filas_invalidas,
+    round(100.0 * countIf(id_cliente IS NOT NULL AND id_producto IS NOT NULL AND id_empleado IS NOT NULL AND cantidad > 0 AND monto > 0 AND descuento >= 0 AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')) / count(), 2) AS porcentaje_calidad,
+    if(round(100.0 * countIf(id_cliente IS NOT NULL AND id_producto IS NOT NULL AND id_empleado IS NOT NULL AND cantidad > 0 AND monto > 0 AND descuento >= 0 AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')) / count(), 2) >= 95, 'OK', 'Alerta') AS estado,
+    'Validación de ventas' AS observacion
+FROM analytics.vw_fact_ventas
+GROUP BY fecha
+UNION ALL
+SELECT
+    'operaciones' AS dominio,
+    toDate(fecha_apertura) AS fecha,
+    count() AS filas_totales,
+    countIf(
+        tiempo_resolucion_hrs >= 0
+        AND prioridad IN ('Alta', 'Media', 'Baja')
+        AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')
+    ) AS filas_validas,
+    countIf(
+        NOT (
+            tiempo_resolucion_hrs >= 0
+            AND prioridad IN ('Alta', 'Media', 'Baja')
+            AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')
+        )
+    ) AS filas_invalidas,
+    round(100.0 * countIf(tiempo_resolucion_hrs >= 0 AND prioridad IN ('Alta', 'Media', 'Baja') AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')) / count(), 2) AS porcentaje_calidad,
+    if(round(100.0 * countIf(tiempo_resolucion_hrs >= 0 AND prioridad IN ('Alta', 'Media', 'Baja') AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')) / count(), 2) >= 95, 'OK', 'Alerta') AS estado,
+    'Validación de operaciones' AS observacion
+FROM analytics.vw_fact_operaciones
+GROUP BY fecha
+UNION ALL
+SELECT
+    'presupuesto' AS dominio,
+    toDate(concat(toString(anio), '-', leftPad(toString(mes), 2, '0'), '-01')) AS fecha,
+    count() AS filas_totales,
+    countIf(asignado >= 0 AND ejercido >= 0 AND comprometido >= 0) AS filas_validas,
+    countIf(NOT (asignado >= 0 AND ejercido >= 0 AND comprometido >= 0)) AS filas_invalidas,
+    round(100.0 * countIf(asignado >= 0 AND ejercido >= 0 AND comprometido >= 0) / count(), 2) AS porcentaje_calidad,
+    if(round(100.0 * countIf(asignado >= 0 AND ejercido >= 0 AND comprometido >= 0) / count(), 2) >= 95, 'OK', 'Alerta') AS estado,
+    'Validación de presupuesto' AS observacion
+FROM analytics.vw_fact_presupuesto
+GROUP BY fecha
+UNION ALL
+SELECT
+    'clientes' AS dominio,
+    toDate(created_at) AS fecha,
+    count() AS filas_totales,
+    countIf(nombre != '' AND region != '' AND sector != '' AND tipo != '') AS filas_validas,
+    countIf(NOT (nombre != '' AND region != '' AND sector != '' AND tipo != '')) AS filas_invalidas,
+    round(100.0 * countIf(nombre != '' AND region != '' AND sector != '' AND tipo != '') / count(), 2) AS porcentaje_calidad,
+    if(round(100.0 * countIf(nombre != '' AND region != '' AND sector != '' AND tipo != '') / count(), 2) >= 95, 'OK', 'Alerta') AS estado,
+    'Validación de clientes' AS observacion
+FROM analytics.vw_dim_clientes
+GROUP BY fecha
+UNION ALL
+SELECT
+    'productos' AS dominio,
+    toDate(created_at) AS fecha,
+    count() AS filas_totales,
+    countIf(nombre != '' AND categoria != '' AND unidad != '' AND precio > 0) AS filas_validas,
+    countIf(NOT (nombre != '' AND categoria != '' AND unidad != '' AND precio > 0)) AS filas_invalidas,
+    round(100.0 * countIf(nombre != '' AND categoria != '' AND unidad != '' AND precio > 0) / count(), 2) AS porcentaje_calidad,
+    if(round(100.0 * countIf(nombre != '' AND categoria != '' AND unidad != '' AND precio > 0) / count(), 2) >= 95, 'OK', 'Alerta') AS estado,
+    'Validación de productos' AS observacion
+FROM analytics.vw_dim_productos
+GROUP BY fecha
+UNION ALL
+SELECT
+    'empleados' AS dominio,
+    toDate(created_at) AS fecha,
+    count() AS filas_totales,
+    countIf(nombre != '' AND area != '' AND puesto != '' AND nivel != '') AS filas_validas,
+    countIf(NOT (nombre != '' AND area != '' AND puesto != '' AND nivel != '')) AS filas_invalidas,
+    round(100.0 * countIf(nombre != '' AND area != '' AND puesto != '' AND nivel != '') / count(), 2) AS porcentaje_calidad,
+    if(round(100.0 * countIf(nombre != '' AND area != '' AND puesto != '' AND nivel != '') / count(), 2) >= 95, 'OK', 'Alerta') AS estado,
+    'Validación de empleados' AS observacion
+FROM analytics.vw_dim_empleados
+GROUP BY fecha;

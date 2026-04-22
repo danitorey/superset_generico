@@ -12,3 +12,7 @@ superset init
 
 echo "===> Starting Superset server"
 exec superset run -h 0.0.0.0 -p 8088 --with-threads
+
+echo "📊 Importando dashboards..."
+superset import-dashboards -p /app/exports/dashboards.zip --username admin
+echo "✅ Dashboards importados"

@@ -85,6 +85,7 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./sql/02_clickhouse_dummy.sql:/docker-entrypoint-initdb.d/02_clickhouse_dummy.sql:ro
+      - ./clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
     networks:
       - data_platform_network
     restart: unless-stopped
@@ -187,3 +188,4 @@ networks:
 volumes:
   postgres_data:
   clickhouse_data:
+

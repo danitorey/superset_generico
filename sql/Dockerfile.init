@@ -1,9 +1,0 @@
-FROM postgres:16
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash curl ca-certificates postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /workspace
-
-CMD ["/bin/bash"]
