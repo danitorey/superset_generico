@@ -100,6 +100,11 @@ services:
     networks:
       - data_platform_network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   superset:
     build:
@@ -110,10 +115,12 @@ services:
     ports:
       - "8088:8088"
     depends_on:
+      postgres:
+        condition: service_healthy
       clickhouse:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py
       - ./superset/init.sh:/app/init.sh
@@ -147,6 +154,10 @@ services:
       - |
         set -euo pipefail
         echo "⏳ Iniciando configuración de la plataforma..."
+
+        echo "🗄️  Creando base de datos para Superset..."
+        psql -h postgres -U postgres -d postgres -c "CREATE DATABASE superset;" || true
+        echo "✅ Base superset lista"
 
         echo "📦 Creando tablas dummy en PostgreSQL..."
         until psql -h postgres -U postgres -d postgres -f /sql/01_postgres_dummy.sql; do
