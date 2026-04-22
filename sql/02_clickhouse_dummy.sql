@@ -276,3 +276,4 @@ CREATE VIEW IF NOT EXISTS analytics.vw_fact_presupuesto AS
 SELECT id, area, mes, anio, asignado, ejercido, comprometido, estatus, created_at
 FROM analytics.fact_presupuesto FINAL
 WHERE __deleted = 0;
+

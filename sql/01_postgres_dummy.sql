@@ -191,3 +191,4 @@ INSERT INTO analytics.fact_presupuesto (area, mes, anio, asignado, ejercido, com
     ('Operaciones', 4, 2026, 450000, 200000, 60000, 'Normal'),
     ('Finanzas',    4, 2026, 200000,  80000, 20000, 'Normal'),
     ('RRHH',        4, 2026, 250000, 100000, 40000, 'Normal');
+

@@ -1,54 +1,50 @@
 #!/bin/bash
 
-DEBEZIUM_URL="http://localhost:8083/connectors"
+echo "🚀 Iniciando Data Platform..."
 
-echo "🔌 Registrando conectores Debezium para tablas dummy..."
+# Verificar Docker
+if ! command -v docker &> /dev/null; then
+    echo "❌ Docker no está instalado"
+    exit 1
+fi
 
-for TABLA in dim_clientes dim_productos dim_empleados fact_ventas fact_operaciones fact_presupuesto; do
-  NOMBRE="analytics-${TABLA//_/-}"
+# Construir y levantar contenedores
+docker compose build --no-cache
+docker compose up -d
 
-  # Elimina si ya existe para evitar conflictos al reiniciar
-  curl -s -X DELETE $DEBEZIUM_URL/$NOMBRE > /dev/null 2>&1
-  sleep 2
+echo "⏳ Esperando que los servicios estén listos..."
+sleep 30
 
-  curl -s -X POST $DEBEZIUM_URL \
-    -H "Content-Type: application/json" \
-    -d "{
-      \"name\": \"$NOMBRE\",
-      \"config\": {
-        \"connector.class\": \"io.debezium.connector.postgresql.PostgresConnector\",
-        \"database.hostname\": \"postgres\",
-        \"database.port\": \"5432\",
-        \"database.user\": \"postgres\",
-        \"database.password\": \"postgres123\",
-        \"database.dbname\": \"postgres\",
-        \"database.server.name\": \"analytics\",
-        \"topic.prefix\": \"analytics\",
-        \"schema.include.list\": \"analytics\",
-        \"table.include.list\": \"analytics.$TABLA\",
-        \"plugin.name\": \"pgoutput\",
-        \"snapshot.mode\": \"always\",
-        \"key.converter\": \"org.apache.kafka.connect.json.JsonConverter\",
-        \"value.converter\": \"org.apache.kafka.connect.json.JsonConverter\",
-        \"key.converter.schemas.enable\": \"false\",
-        \"value.converter.schemas.enable\": \"false\",
-        \"transforms\": \"unwrap\",
-        \"transforms.unwrap.type\": \"io.debezium.transforms.ExtractNewRecordState\",
-        \"transforms.unwrap.drop.tombstones\": \"false\",
-        \"transforms.unwrap.delete.handling.mode\": \"rewrite\"
-      }
-    }" > /dev/null
-  echo "  ✅ $NOMBRE registrado"
-done
+# ============================================================
+# PostgreSQL — Crear tablas dummy
+# ============================================================
+echo "📦 Creando tablas dummy en PostgreSQL..."
+docker exec -i postgres psql -U postgres -d postgres < sql/01_postgres_dummy.sql
+echo "✅ PostgreSQL listo"
+
+# ============================================================
+# ClickHouse — Crear estructuras
+# ============================================================
+echo "🏗️  Creando estructuras en ClickHouse..."
+docker exec -i clickhouse clickhouse-client --multiquery < sql/02_clickhouse_dummy.sql
+echo "✅ ClickHouse listo"
+
+# ============================================================
+# Debezium — Registrar conectores
+# ============================================================
+echo "🔌 Registrando conectores Debezium..."
+sleep 10
+bash sh/03_debezium_connectors.sh
+echo "✅ Debezium listo"
 
 echo ""
-echo "⏳ Esperando 15 segundos para verificar topics..."
-sleep 15
-
+echo "✅ Plataforma iniciada correctamente!"
 echo ""
-echo "📋 Topics en Redpanda:"
-docker exec -it redpanda rpk topic list | grep analytics
-
+echo "📊 Accesos:"
+echo "  - Superset:   http://localhost:8088 (admin/admin)"
+echo "  - ClickHouse: http://localhost:18123"
+echo "  - PostgreSQL: localhost:5432"
+echo "  - Debezium:   http://localhost:8083"
 echo ""
-echo "📋 Estado de conectores:"
-curl -s http://localhost:8083/connectors | python3 -m json.tool
+echo "🔌 Cadena de conexión ClickHouse en Superset:"
+echo "   clickhouse://superset_user:superset_pass@clickhouse:8123/analytics"

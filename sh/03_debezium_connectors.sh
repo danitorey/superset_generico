@@ -1,10 +1,4 @@
 #!/bin/bash
-# ============================================================
-# 03_debezium_connectors.sh
-# Registra los 6 conectores Debezium para tablas dummy
-# PostgreSQL: postgres / postgres123 / postgres (schema: analytics)
-# ============================================================
-
 DEBEZIUM_URL="http://localhost:8083/connectors"
 
 echo "🚀 Registrando conectores Debezium para tablas dummy..."
@@ -26,7 +20,9 @@ curl -s -X POST $DEBEZIUM_URL \
       "schema.include.list": "analytics",
       "table.include.list": "analytics.dim_clientes",
       "plugin.name": "pgoutput",
+      "slot.name": "analytics_dim_clientes",
       "snapshot.mode": "always",
+      "decimal.handling.mode": "string",
       "key.converter": "org.apache.kafka.connect.json.JsonConverter",
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
       "key.converter.schemas.enable": "false",
@@ -57,7 +53,9 @@ curl -s -X POST $DEBEZIUM_URL \
       "schema.include.list": "analytics",
       "table.include.list": "analytics.dim_productos",
       "plugin.name": "pgoutput",
+      "slot.name": "analytics_dim_productos",
       "snapshot.mode": "always",
+      "decimal.handling.mode": "string",
       "key.converter": "org.apache.kafka.connect.json.JsonConverter",
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
       "key.converter.schemas.enable": "false",
@@ -88,7 +86,9 @@ curl -s -X POST $DEBEZIUM_URL \
       "schema.include.list": "analytics",
       "table.include.list": "analytics.dim_empleados",
       "plugin.name": "pgoutput",
+      "slot.name": "analytics_dim_empleados",
       "snapshot.mode": "always",
+      "decimal.handling.mode": "string",
       "key.converter": "org.apache.kafka.connect.json.JsonConverter",
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
       "key.converter.schemas.enable": "false",
@@ -119,7 +119,9 @@ curl -s -X POST $DEBEZIUM_URL \
       "schema.include.list": "analytics",
       "table.include.list": "analytics.fact_ventas",
       "plugin.name": "pgoutput",
+      "slot.name": "analytics_fact_ventas",
       "snapshot.mode": "always",
+      "decimal.handling.mode": "string",
       "key.converter": "org.apache.kafka.connect.json.JsonConverter",
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
       "key.converter.schemas.enable": "false",
@@ -150,7 +152,9 @@ curl -s -X POST $DEBEZIUM_URL \
       "schema.include.list": "analytics",
       "table.include.list": "analytics.fact_operaciones",
       "plugin.name": "pgoutput",
+      "slot.name": "analytics_fact_operaciones",
       "snapshot.mode": "always",
+      "decimal.handling.mode": "string",
       "key.converter": "org.apache.kafka.connect.json.JsonConverter",
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
       "key.converter.schemas.enable": "false",
@@ -181,7 +185,9 @@ curl -s -X POST $DEBEZIUM_URL \
       "schema.include.list": "analytics",
       "table.include.list": "analytics.fact_presupuesto",
       "plugin.name": "pgoutput",
+      "slot.name": "analytics_fact_presupuesto",
       "snapshot.mode": "always",
+      "decimal.handling.mode": "string",
       "key.converter": "org.apache.kafka.connect.json.JsonConverter",
       "value.converter": "org.apache.kafka.connect.json.JsonConverter",
       "key.converter.schemas.enable": "false",
@@ -201,7 +207,7 @@ sleep 15
 
 echo ""
 echo "📋 Topics creados en Redpanda:"
-docker exec -it redpanda rpk topic list | grep analytics
+docker exec redpanda rpk topic list | grep analytics
 
 echo ""
 echo "📋 Estado de conectores:"
