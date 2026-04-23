@@ -125,6 +125,8 @@ services:
     volumes:
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py
       - ./superset/init.sh:/app/init.sh
+      - ./superset/exports:/app/exports:ro
+      - ./superset/create_clickhouse_connection.py:/app/create_clickhouse_connection.py:ro
     networks:
       - data_platform_network
     restart: unless-stopped

@@ -1,123 +1,134 @@
-# 🏗️ Data Platform — CASmart
+# 🏗️ Plataforma de Datos OLTP → CDC → OLAP → BI
 
-## 🎯 Objetivo
-
-Diseñar e implementar una plataforma de datos moderna, escalable y de bajo costo operativo que permita centralizar información, capturar cambios en tiempo real, almacenar datos analíticos y mostrarlos en dashboards ejecutivos útiles para la toma de decisiones.
-
-La meta es que la solución sirva tanto para un proyecto como SIQROO como para cualquier organización que necesite control operativo, seguimiento de KPIs, calidad de datos, reportes automáticos y crecimiento futuro hacia consultas federadas e inteligencia asistida por IA.
+> **Stack:** PostgreSQL 16 · Debezium 2.5 · Redpanda (Kafka-compatible) · ClickHouse · Apache Superset 6.0 · Redis · Docker Compose
 
 ---
 
-## 📊 ¿Para qué sirven los 7 dashboards?
+## 1. Objetivo
 
-| Dashboard | Uso principal |
-|---|---|
-| **Resumen Ejecutivo** | Ver en una sola pantalla cómo va el negocio hoy. |
-| **Ventas y Comercial** | Saber qué se vende, quién vende más y a qué clientes. |
-| **Operaciones** | Monitorear solicitudes, tiempos de atención y cuellos de botella. |
-| **Presupuesto** | Comparar lo asignado contra lo ejercido y detectar desvíos. |
-| **Calidad de datos** | Identificar registros incompletos o inválidos. |
-| **Recursos Humanos** | Entender plantilla, áreas, niveles y antigüedad. |
-| **Tendencias y Proyecciones** | Ver evolución histórica y anticipar comportamientos futuros. |
+Diseñar e implementar una plataforma de datos moderna que permita:
+
+- Replicar datos desde PostgreSQL (OLTP) en tiempo casi real mediante CDC
+- Desacoplar completamente la carga analítica del sistema transaccional
+- Acelerar consultas analíticas con ClickHouse (OLAP columnar)
+- Visualizar información con Apache Superset de forma segura y cacheada con Redis
+- Garantizar reproducibilidad y portabilidad completa mediante Docker Compose
 
 ---
 
-## 🗺️ Diagrama de flujo
+## 2. Arquitectura General
 
-```text
-┌──────────────────────┐
-│  Fuentes de datos    │
-│  PostgreSQL          │
-│  (y futuras fuentes) │
-└──────────┬───────────┘
-           │ CDC / Cambios
-           ▼
-┌──────────────────────┐
-│      Debezium        │
-│  Captura cambios     │
-│  en tiempo real      │
-└──────────┬───────────┘
-           │ Eventos
-           ▼
-┌──────────────────────┐
-│      Redpanda        │
-│   Bus tipo Kafka     │
-└──────────┬───────────┘
-           │ Kafka Engine
-           ▼
-┌────────────────────────────────────────────┐
-│               ClickHouse                    │
-│  ┌───────────────┐                          │
-│  │ Kafka tables  │  Entrada de eventos      │
-│  └──────┬────────┘                          │
-│         │ Materialized Views                │
-│  ┌──────▼────────┐                          │
-│  │ Tablas físicas │  Datos ya procesados    │
-│  └──────┬────────┘                          │
-│         │ Vistas limpias                    │
-│  ┌──────▼────────┐                          │
-│  │   vw_*        │  Consumo para Superset  │
-│  └────────────────┘                          │
-└──────────┬───────────────────────────────────┘
-           │
-           ▼
-┌──────────────────────┐
-│     Apache Superset  │
-│  Dashboards y filtros│
-│  Reportes y alertas  │
-└──────────┬───────────┘
-           │
-           ▼
-┌──────────────────────┐
-│     Monitoreo        │
-│  logs, cron jobs,    │
-│  pipeline health     │
-└──────────────────────┘
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PLATAFORMA DE DATOS                                 │
+│                                                                             │
+│   Usuarios / Apps                                                           │
+│         │                                                                   │
+│         ▼                                                                   │
+│  ┌─────────────┐    logical replication    ┌──────────────┐                │
+│  │ PostgreSQL  │ ─────────────────────────▶│   Debezium   │                │
+│  │  (OLTP 16)  │                           │  Connect 2.5 │                │
+│  └─────────────┘                           └──────┬───────┘                │
+│    6 tablas CDC:                                   │ eventos JSON           │
+│    • dim_clientes                                  ▼                        │
+│    • dim_productos                        ┌──────────────┐                 │
+│    • dim_empleados                        │   Redpanda   │                 │
+│    • fact_ventas                          │  (Kafka API) │                 │
+│    • fact_operaciones                     └──────┬───────┘                 │
+│    • fact_presupuesto                            │ topics por tabla        │
+│                                                  ▼                         │
+│                                         ┌──────────────┐                  │
+│                                         │  ClickHouse  │                  │
+│                                         │  (OLAP col.) │                  │
+│                                         └──────┬───────┘                  │
+│                                                │ consultas OLAP            │
+│                              ┌─────────────────┤                           │
+│                              │                 │                           │
+│                              ▼                 ▼                           │
+│                        ┌──────────┐    ┌──────────────┐                   │
+│                        │  Redis   │◀───│   Superset   │                   │
+│                        │ (cache)  │    │    BI 6.0    │                   │
+│                        └──────────┘    └──────┬───────┘                   │
+│                                               │ :8088                      │
+│                                               ▼                            │
+│                                         Dashboards BI                      │
+│                                    ┌────────────────────┐                  │
+│                                    │ • Ventas           │                  │
+│                                    │ • Operaciones      │                  │
+│                                    │ • Clientes         │                  │
+│                                    │ • Productos        │                  │
+│                                    │ • Empleados        │                  │
+│                                    │ • Presupuesto      │                  │
+│                                    │ • Analytics Gen.   │                  │
+│                                    └────────────────────┘                  │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🧩 Arquitectura por capas
+## 3. Tabla de Fases del Proyecto
 
-### 1. Capa de fuentes
-Origen de los datos: PostgreSQL hoy, y otras bases o sistemas después.
-
-### 2. Capa de ingestión
-Debezium captura los cambios sin afectar el sistema fuente.
-
-### 3. Capa de mensajería
-Redpanda transporta eventos de forma ordenada y desacoplada.
-
-### 4. Capa analítica
-ClickHouse guarda, procesa y sirve la información lista para consulta rápida.
-
-### 5. Capa de consumo
-Superset presenta los dashboards, filtros, reportes y visualizaciones.
-
-### 6. Capa de monitoreo
-Scripts y logs verifican que el pipeline siga funcionando.
+| # | Fase | Descripción | Estado |
+|---|------|-------------|--------|
+| 1 | **Infraestructura base** | Docker Compose con PostgreSQL, Redpanda, Debezium, ClickHouse, Redis, Superset | ✅ Completado |
+| 2 | **CDC con Debezium** | Replicación lógica de 6 tablas del schema `analytics` hacia topics Redpanda | ✅ Completado |
+| 3 | **Datos dummy** | Tablas y datos de prueba en PostgreSQL y ClickHouse para validación end-to-end | ✅ Completado |
+| 4 | **Conexión ClickHouse → Superset** | Script automático `create_clickhouse_connection.py` via API REST | ✅ Completado |
+| 5 | **Dashboards BI** | 7 dashboards importados automáticamente desde ZIPs en `superset/exports/` | ✅ Completado |
+| 6 | **Init automatizado** | `init.sh` orquesta migraciones, admin, init, conexión CH y carga de dashboards | ✅ Completado |
+| 7 | **Alertas y correos** | Configurar Superset Alerts & Reports con SMTP para notificaciones automáticas | 🔲 Siguiente |
+| 8 | **Dashboard de monitoreo** | Dashboard interno de salud de la plataforma (lag CDC, estado conectores, métricas) | 🔲 Pendiente |
+| 9 | **Authentik (SSO/IdP)** | Autenticación centralizada con Authentik como proveedor OIDC/SAML para Superset | 🔲 Pendiente |
+| 10 | **API Gateway** | Traefik o Nginx como reverse proxy con rutas, TLS y rate limiting | 🔲 Pendiente |
+| 11 | **Hardening producción** | Secrets management, usuarios no-root, variables de entorno seguras, backups | 🔲 Pendiente |
+| 12 | **Observabilidad** | Prometheus + Grafana para métricas de contenedores y pipelines | 🔲 Futuro |
 
 ---
 
-## 🚀 Fases del proyecto
+## 4. Servicios del Stack
 
-| Fase | Estado | Descripción |
-|---|---|---|
-| **1. Infraestructura base** | ✅ | Docker Compose, servicios, límites y persistencia. |
-| **2. Modelo de datos** | ✅ | Tablas, vistas y estructuras en PostgreSQL y ClickHouse. |
-| **3. Pipeline CDC** | ✅ | Flujo PostgreSQL → Debezium → Redpanda → ClickHouse. |
-| **4. Dashboards** | ✅ | 7 dashboards ejecutivos en Superset. |
-| **5. Automatización avanzada** | 🔄 | Alertas, reportes programados y monitoreo del pipeline. |
-| **6. Consultas federadas con Trino** | 🔜 | Unir datos de PostgreSQL y ClickHouse en una sola consulta. |
-| **7. Calidad de datos avanzada** | 🔜 | Validaciones más estrictas y alertas por degradación. |
-| **8. Seguridad y multitenencia** | 🔜 | Roles, permisos y aislamiento por área. |
-| **9. IA en Superset** | 🔜 | Preguntas en lenguaje natural e insights automáticos. |
+| Servicio | Imagen | Puerto | Rol |
+|----------|--------|--------|-----|
+| `postgres` | `postgres:16` | `5432` | Fuente OLTP, WAL lógico |
+| `redpanda` | `redpandadata/redpanda:v23.3.10` | `9092` | Broker Kafka-compatible |
+| `debezium` | `debezium/connect:2.5` | `8083` | CDC connector (6 tablas) |
+| `clickhouse` | `clickhouse/clickhouse-server:latest` | `8123 / 9000` | OLAP columnar |
+| `redis` | `redis:7` | `6379` | Cache de queries Superset |
+| `superset` | `apache/superset:6.0.0` + custom | `8088` | BI / Dashboards |
+| `platform_init` | custom (postgres:16 base) | — | Orquestador de inicialización |
 
 ---
 
-## 🧱 Estructura del repositorio
+## 5. Conectores Debezium activos
 
-```text
+```
+analytics-dim-clientes      → topic: analytics.analytics.dim_clientes
+analytics-dim-productos     → topic: analytics.analytics.dim_productos
+analytics-dim-empleados     → topic: analytics.analytics.dim_empleados
+analytics-fact-ventas       → topic: analytics.analytics.fact_ventas
+analytics-fact-operaciones  → topic: analytics.analytics.fact_operaciones
+analytics-fact-presupuesto  → topic: analytics.analytics.fact_presupuesto
+```
+
+---
+
+## 6. Dashboards importados en Superset
+
+| Dashboard | Archivo ZIP |
+|-----------|-------------|
+| Ventas | `dashboard_ventas.zip` |
+| Operaciones | `dashboard_operaciones.zip` |
+| Clientes | `dashboard_clientes.zip` |
+| Productos | `dashboard_productos.zip` |
+| Empleados | `dashboard_empleados.zip` |
+| Presupuesto | `dashboard_presupuesto.zip` |
+| Analytics General | `dashboard_analytics_general.zip` |
+
+---
+
+## 7. Estructura de Directorios
+
+```
 data-platform/
 ├── docker-compose.yml
 ├── .env
@@ -126,91 +137,245 @@ data-platform/
 ├── README.md
 │
 ├── postgres/
-│   └── init/
-│
-├── clickhouse/
-│   └── config.d/
-│       └── limits.xml
+│   └── docker-entrypoint-initdb.d/
 │
 ├── sql/
 │   ├── 01_postgres_dummy.sql
 │   └── 02_clickhouse_dummy.sql
 │
 ├── sh/
-│   ├── 03_debezium_connectors.sh
-│   └── monitor_pipeline.sh
+│   └── 03_debezium_connectors.sh
 │
 ├── superset/
 │   ├── superset_config.py
-│   ├── init.sh
+│   ├── init.sh                        ← orquestador principal
+│   ├── create_clickhouse_connection.py
 │   └── exports/
-│       ├── reporte_ejecutivo.zip
-│       ├── Ventas_comercial.zip
-│       ├── operaciones.zip
-│       ├── presupuesto.zip
-│       ├── calidad_datos.zip
-│       ├── recursos_humanos.zip
-│       └── tendencias_proyecciones.zip
-│
-└── trino/
-    └── catalog/
-        ├── postgres.properties
-        └── clickhouse.properties
+│       ├── dashboard_ventas.zip
+│       ├── dashboard_operaciones.zip
+│       ├── dashboard_clientes.zip
+│       ├── dashboard_productos.zip
+│       ├── dashboard_empleados.zip
+│       ├── dashboard_presupuesto.zip
+│       └── dashboard_analytics_general.zip
 ```
 
 ---
 
-## ⚙️ Cómo se levanta
+## 8. Comandos de operación
+
+### 🔄 Ciclo completo (bajar → limpiar → levantar)
 
 ```bash
+# 1. Bajar todo (volúmenes incluidos)
 docker compose down -v --remove-orphans
+
+# 2. Verificar ZIPs en su lugar
+ls -lh superset/exports/
+
+# 3. Construir y levantar
 docker compose up -d --build
+
+# 4. Monitorear init
 docker logs -f platform_init
+
+# 5. Monitorear Superset (en otra terminal)
+docker logs -f superset
 ```
 
-Servicios principales:
-- Superset: http://localhost:8088
-- ClickHouse: http://localhost:18123
-- Debezium: http://localhost:8083
+### 📋 Verificación rápida
+
+```bash
+# Estado de todos los contenedores
+docker compose ps
+
+# Salud de conectores Debezium
+curl -s http://localhost:8083/connectors | python3 -m json.tool
+
+# Estado individual de un conector
+curl -s http://localhost:8083/connectors/analytics-fact-ventas/status | python3 -m json.tool
+
+# Ping ClickHouse
+curl -s http://localhost:8123/ping
+
+# Ver topics Redpanda
+docker exec redpanda rpk topic list
+```
+
+### 🧹 Limpieza selectiva (sin bajar todo)
+
+```bash
+# Solo reiniciar el init (para re-importar dashboards)
+docker compose restart platform_init
+
+# Solo reiniciar Superset
+docker compose restart superset
+```
 
 ---
 
-## 📥 Importación automática de dashboards
+## 9. Qué sigue — Fase 7: Alertas, Correos y Dashboard de Monitoreo
 
-El archivo `superset/init.sh` debe importar uno por uno los 7 ZIPs:
+### Paso 1 — Habilitar celery beat en Superset
 
-```bash
-echo "📊 Importando dashboards..."
-superset import-dashboards -p /app/exports/reporte_ejecutivo.zip --username admin
-superset import-dashboards -p /app/exports/Ventas_comercial.zip --username admin
-superset import-dashboards -p /app/exports/operaciones.zip --username admin
-superset import-dashboards -p /app/exports/presupuesto.zip --username admin
-superset import-dashboards -p /app/exports/calidad_datos.zip --username admin
-superset import-dashboards -p /app/exports/recursos_humanos.zip --username admin
-superset import-dashboards -p /app/exports/tendencias_proyecciones.zip --username admin
-echo "✅ Dashboards importados"
-```
-
-Y en `docker-compose.yml` se monta la carpeta completa:
+Superset necesita un worker y scheduler para ejecutar alertas/reportes.
+Agregar en `docker-compose.yml`:
 
 ```yaml
-volumes:
-  - ./superset/superset_config.py:/app/pythonpath/superset_config.py
-  - ./superset/init.sh:/app/init.sh
-  - ./superset/exports:/app/exports:ro
+superset-worker:
+  build:
+    context: .
+    dockerfile: Dockerfile.superset
+  container_name: superset_worker
+  command: celery --app=superset.tasks.celery_app:app worker --loglevel=INFO
+  env_file: .env
+  depends_on:
+    - redis
+    - postgres
+  networks:
+    - dataplatformnetwork
+  restart: unless-stopped
+
+superset-beat:
+  build:
+    context: .
+    dockerfile: Dockerfile.superset
+  container_name: superset_beat
+  command: celery --app=superset.tasks.celery_app:app beat --loglevel=INFO
+  env_file: .env
+  depends_on:
+    - redis
+    - postgres
+  networks:
+    - dataplatformnetwork
+  restart: unless-stopped
+```
+
+### Paso 2 — Configurar SMTP en `superset_config.py`
+
+```python
+# Alertas y correos
+ENABLE_SCHEDULED_EMAIL_REPORTS = True
+ENABLE_ALERTS = True
+
+EMAIL_NOTIFICATIONS = True
+SMTP_HOST = "smtp.gmail.com"           # o tu servidor SMTP
+SMTP_STARTTLS = True
+SMTP_SSL = False
+SMTP_PORT = 587
+SMTP_USER = "tu-correo@gmail.com"
+SMTP_PASSWORD = "tu-app-password"
+SMTP_MAIL_FROM = "tu-correo@gmail.com"
+
+# Celery broker (Redis)
+from celery.schedules import crontab
+CELERY_CONFIG = {
+    "broker_url": "redis://redis:6379/0",
+    "result_backend": "redis://redis:6379/0",
+    "worker_prefetch_multiplier": 1,
+    "task_acks_late": False,
+    "beat_schedule": {
+        "reports.scheduler": {
+            "task": "reports.scheduler",
+            "schedule": crontab(minute="*", hour="*"),
+        },
+    },
+}
+
+# URL base para links en correos
+WEBDRIVER_BASEURL = "http://superset:8088/"
+WEBDRIVER_BASEURL_USER_FRIENDLY = "http://localhost:8088/"
+```
+
+### Paso 3 — Crear una alerta en Superset UI
+
+1. Ir a **Alerts & Reports** → `+ Alert`
+2. Configurar:
+   - **Nombre:** `Ventas diarias bajas`
+   - **Alert type:** `SQL-based alert`
+   - **Database:** ClickHouse Analytics
+   - **SQL:** `SELECT count(*) FROM fact_ventas WHERE toDate(fecha) = today()`
+   - **Condición:** `< 10`
+   - **Schedule:** cron `0 9 * * *` (9 AM diario)
+   - **Notificación:** Email → destinatarios
+
+### Paso 4 — Dashboard de Monitoreo de la plataforma
+
+Crear un dashboard en Superset con estas métricas clave:
+
+```sql
+-- 1. Lag aproximado de CDC (última inserción vs ahora)
+SELECT
+    table,
+    max(updated_at) AS ultima_replicacion,
+    now() - max(updated_at) AS lag
+FROM analytics.dim_clientes
+UNION ALL
+SELECT 'fact_ventas', max(fecha), now() - max(fecha)
+FROM analytics.fact_ventas;
+
+-- 2. Conteo de registros por tabla
+SELECT 'dim_clientes' AS tabla, count(*) AS registros FROM analytics.dim_clientes
+UNION ALL SELECT 'fact_ventas', count(*) FROM analytics.fact_ventas
+UNION ALL SELECT 'fact_operaciones', count(*) FROM analytics.fact_operaciones;
+
+-- 3. Volumen de eventos por hora (últimas 24h)
+SELECT
+    toStartOfHour(fecha) AS hora,
+    count(*) AS eventos
+FROM analytics.fact_ventas
+WHERE fecha >= now() - INTERVAL 1 DAY
+GROUP BY hora
+ORDER BY hora;
 ```
 
 ---
 
-## 🔮 Evolución futura
+## 10. Variables de entorno (.env)
 
-- **Trino**: para consultar PostgreSQL y ClickHouse juntos.
-- **Alertas y reportes**: notificaciones automáticas por cambios de KPI.
-- **Monitoreo del pipeline**: validar que la cadena de datos siga viva.
-- **IA en Superset**: consultas y resúmenes en lenguaje natural.
+```env
+# PostgreSQL
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres123
+POSTGRES_DB=postgres
+
+# ClickHouse
+CLICKHOUSE_DB=analytics
+CLICKHOUSE_USER=default
+CLICKHOUSE_PASSWORD=clickhouse123
+
+# Superset
+SUPERSET_SECRET_KEY=tu-clave-secreta-muy-larga
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=admin
+ADMIN_EMAIL=admin@example.com
+ADMIN_FIRST_NAME=Admin
+ADMIN_LAST_NAME=User
+```
 
 ---
 
-## 📝 Nota
+## 11. Requisitos de infraestructura
 
-Esta plataforma está pensada para crecer por etapas. Primero se consolida la base operativa y analítica, luego se agrega automatización, después consultas federadas y finalmente capacidades de inteligencia asistida.
+| Entorno | CPU | RAM | Disco |
+|---------|-----|-----|-------|
+| Dev / pruebas | 4 cores | 8 GB | 50 GB SSD |
+| QA / pre-prod | 8 cores | 16 GB | 100 GB SSD |
+| Producción inicial | 16 cores | 32 GB | 300 GB SSD (IOPS altos) |
+
+---
+
+## 12. Troubleshooting rápido
+
+| Síntoma | Causa probable | Solución |
+|---------|---------------|----------|
+| `platform_init` termina con error | Superset no listo aún | Aumentar `sleep` en el `until` del `init.sh` |
+| Dashboards no importan | ZIPs no encontrados o mal nombrados | `ls superset/exports/` y verificar nombres exactos |
+| ClickHouse `409` en conexión | Conexión ya existe | Normal, ignorar |
+| Debezium `404` al registrar | Debezium aún arrancando | El script reintenta automáticamente |
+| Superset sin charts | UUID del dashboard no coincide con datasource | Re-exportar desde Superset con datos correctos |
+| Celery worker no procesa alertas | Redis no conectado o celery no arranca | `docker logs superset_worker` |
+
+---
+
+*Última actualización: Abril 2026 — Ricardo Daniel Reyes Arellano*
