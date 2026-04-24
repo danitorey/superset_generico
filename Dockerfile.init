@@ -1,7 +1,14 @@
 FROM postgres:16
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bash curl ca-certificates postgresql-client \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        curl \
+        ca-certificates \
+        postgresql-client \
+        python3 \
+        python3-pip \
+    && pip3 install --no-cache-dir --break-system-packages requests \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

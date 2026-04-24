@@ -1,9 +1,20 @@
 FROM apache/superset:6.0.0
 
 USER root
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip zip \
+    firefox-esr \
+    wget \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Instalar geckodriver
+RUN wget -q https://github.com/mozilla/geckodriver/releases/download/v0.34.0/geckodriver-v0.34.0-linux64.tar.gz \
+    && tar -xzf geckodriver-v0.34.0-linux64.tar.gz \
+    && mv geckodriver /usr/local/bin/ \
+    && chmod +x /usr/local/bin/geckodriver \
+    && rm geckodriver-v0.34.0-linux64.tar.gz
 
 # Instalar drivers
 RUN pip install --no-cache-dir clickhouse-connect psycopg2-binary

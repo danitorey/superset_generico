@@ -1,5 +1,10 @@
--- 02_clickhouse_dummy-2.sql
--- Bootstrap idempotente para ClickHouse con tablas, colas Kafka, MVs y vistas
+-- ============================================================
+-- 02_clickhouse_dummy.sql
+-- Bootstrap idempotente para ClickHouse con tablas, colas Kafka,
+-- Materialized Views y Vistas.
+-- IDEMPOTENTE: usa CREATE TABLE IF NOT EXISTS y CREATE ... IF NOT EXISTS
+-- en todos los objetos — seguro de ejecutar múltiples veces.
+-- ============================================================
 
 CREATE DATABASE IF NOT EXISTS analytics;
 
@@ -275,8 +280,7 @@ SELECT
     SUM(v.monto) AS total_ventas,
     COUNT(*) AS num_transacciones
 FROM analytics.fact_ventas v
-INNER JOIN analytics.dim_productos p
-    ON v.id_producto = p.id
+INNER JOIN analytics.dim_productos p ON v.id_producto = p.id
 GROUP BY p.nombre
 ORDER BY total_ventas DESC;
 
@@ -286,8 +290,7 @@ SELECT
     SUM(v.monto) AS total_ventas,
     COUNT(*) AS num_transacciones
 FROM analytics.fact_ventas v
-INNER JOIN analytics.dim_empleados e
-    ON v.id_empleado = e.id
+INNER JOIN analytics.dim_empleados e ON v.id_empleado = e.id
 GROUP BY e.nombre
 ORDER BY total_ventas DESC;
 
@@ -296,26 +299,8 @@ SELECT
     'ventas' AS dominio,
     toDate(fecha_venta) AS fecha,
     count() AS filas_totales,
-    countIf(
-        id_cliente IS NOT NULL
-        AND id_producto IS NOT NULL
-        AND id_empleado IS NOT NULL
-        AND cantidad > 0
-        AND monto > 0
-        AND descuento >= 0
-        AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')
-    ) AS filas_validas,
-    countIf(
-        NOT (
-            id_cliente IS NOT NULL
-            AND id_producto IS NOT NULL
-            AND id_empleado IS NOT NULL
-            AND cantidad > 0
-            AND monto > 0
-            AND descuento >= 0
-            AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')
-        )
-    ) AS filas_invalidas,
+    countIf(id_cliente IS NOT NULL AND id_producto IS NOT NULL AND id_empleado IS NOT NULL AND cantidad > 0 AND monto > 0 AND descuento >= 0 AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')) AS filas_validas,
+    countIf(NOT (id_cliente IS NOT NULL AND id_producto IS NOT NULL AND id_empleado IS NOT NULL AND cantidad > 0 AND monto > 0 AND descuento >= 0 AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso'))) AS filas_invalidas,
     round(100.0 * countIf(id_cliente IS NOT NULL AND id_producto IS NOT NULL AND id_empleado IS NOT NULL AND cantidad > 0 AND monto > 0 AND descuento >= 0 AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')) / count(), 2) AS porcentaje_calidad,
     if(round(100.0 * countIf(id_cliente IS NOT NULL AND id_producto IS NOT NULL AND id_empleado IS NOT NULL AND cantidad > 0 AND monto > 0 AND descuento >= 0 AND estatus IN ('Pendiente', 'Pagada', 'Cancelada', 'En proceso')) / count(), 2) >= 95, 'OK', 'Alerta') AS estado,
     'Validación de ventas' AS observacion
@@ -326,18 +311,8 @@ SELECT
     'operaciones' AS dominio,
     toDate(fecha_apertura) AS fecha,
     count() AS filas_totales,
-    countIf(
-        tiempo_resolucion_hrs >= 0
-        AND prioridad IN ('Alta', 'Media', 'Baja')
-        AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')
-    ) AS filas_validas,
-    countIf(
-        NOT (
-            tiempo_resolucion_hrs >= 0
-            AND prioridad IN ('Alta', 'Media', 'Baja')
-            AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')
-        )
-    ) AS filas_invalidas,
+    countIf(tiempo_resolucion_hrs >= 0 AND prioridad IN ('Alta', 'Media', 'Baja') AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')) AS filas_validas,
+    countIf(NOT (tiempo_resolucion_hrs >= 0 AND prioridad IN ('Alta', 'Media', 'Baja') AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado'))) AS filas_invalidas,
     round(100.0 * countIf(tiempo_resolucion_hrs >= 0 AND prioridad IN ('Alta', 'Media', 'Baja') AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')) / count(), 2) AS porcentaje_calidad,
     if(round(100.0 * countIf(tiempo_resolucion_hrs >= 0 AND prioridad IN ('Alta', 'Media', 'Baja') AND estatus IN ('Abierto', 'En proceso', 'Resuelto', 'Cancelado')) / count(), 2) >= 95, 'OK', 'Alerta') AS estado,
     'Validación de operaciones' AS observacion

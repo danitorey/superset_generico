@@ -37,8 +37,10 @@ services:
       - --reserve-memory 0M
       - --node-id 0
       - --check=false
-      - --kafka-addr PLAINTEXT://0.0.0.0:9092
-      - --advertise-kafka-addr PLAINTEXT://redpanda:9092
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092
     ports:
       - "9092:9092"
     networks:
@@ -147,6 +149,7 @@ services:
     volumes:
       - ./sql:/sql
       - ./sh:/sh
+      - ./scripts:/scripts
     environment:
       PGPASSWORD: postgres123
     networks:
@@ -180,8 +183,66 @@ services:
         bash /sh/03_debezium_connectors.sh || true
         echo "✅ Debezium listo"
 
+        echo "⏳ Esperando que Superset esté listo..."
+        until curl -fsS "http://superset:8088/health" | grep -q "OK"; do
+          echo "⏳ Superset no listo aún..."
+          sleep 5
+        done
+        echo "✅ Superset listo"
+
+        echo "🔐 Configurando RLS..."
+        python3 /scripts/setup_rls.py || true
+
+        echo "🔔 Configurando Alertas y Reportes..."
+        python3 /scripts/setup_alerts.py || true
+
+        echo "📊 Configurando Dashboard de Monitoreo..."
+        python3 /scripts/setup_monitoring_dashboard.py || true
+
         echo ""
         echo "🚀 Plataforma lista!"
+
+  superset-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: superset_worker
+    env_file: .env
+    command: >
+      celery --app=superset.tasks.celery_app:app worker
+      --loglevel=INFO
+      --concurrency=2
+    volumes:
+      - ./superset/superset_config.py:/app/pythonpath/superset_config.py
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    restart: unless-stopped
+
+  superset-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile.superset
+    container_name: superset_beat
+    env_file: .env
+    command: >
+      celery --app=superset.tasks.celery_app:app beat
+      --loglevel=INFO
+      --schedule=/tmp/celerybeat-schedule
+    volumes:
+      - ./superset/superset_config.py:/app/pythonpath/superset_config.py
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - data_platform_network
+    restart: unless-stopped
 
 networks:
   data_platform_network:
@@ -190,4 +251,3 @@ networks:
 volumes:
   postgres_data:
   clickhouse_data:
-
