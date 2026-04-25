@@ -24,101 +24,148 @@ flowchart TB
         PG[("PostgreSQL 16
 6 tablas analíticas")]
     end
+
     subgraph CDC["🔄 Captura de Cambios (CDC)"]
         DEB[Debezium Connect 2.5
 Conectores por tabla]
     end
+
     subgraph STREAMING["📨 Streaming / Mensajería"]
         RP[Redpanda
 Kafka-compatible
 Topics por tabla]
     end
+
     subgraph OLAP["⚡ Almacén Analítico (OLAP)"]
         CH[("ClickHouse
 Columnar
 Base analítica")]
     end
+
     subgraph CACHE["💨 Capa de Caché"]
         RD[("Redis
 Cache de queries")]
     end
+
     subgraph BI["📊 Capa de Visualización (BI)"]
         SUP[Apache Superset
 Dashboards BI]
     end
+
     subgraph USERS["👥 Usuarios Finales"]
         USER[("Analistas / Gerencia")]
     end
 
     PG -->|WAL| DEB
-    DEB -->|Eventos CDC| RP
-    RP --> CH
-    CH --> SUP
-    RD --> SUP
-    SUP --> USER
+    DEB -->|Eventos JSON CDC| RP
+    RP -->|Consumo por tabla| CH
+    CH -->|Consultas OLAP| SUP
+    RD -->|Cache de resultados| SUP
+    SUP -->|Dashboards / Reportes| USER
 ```
 
 ## 3. Diagrama de Flujo de Datos (Secuencia completa)
 
 ```mermaid
 flowchart LR
-    START --> TRIGGER --> DEBEZIUM --> TOPIC
-    TOPIC --> T1 & T2 & T3 & T4 & T5 & T6
-    T1 & T2 & T3 & T4 & T5 & T6 --> CH
-    CH --> QUERY --> CACHE
-    CACHE --> FAST
-    FAST --> DASH --> END
+    START([Inicio: App escribe en PostgreSQL]) --> TRIGGER[PostgreSQL WAL genera cambios]
+    TRIGGER --> DEBEZIUM[Debezium captura CDC
+por cada tabla]
+    DEBEZIUM --> TOPIC{¿Qué tabla?}
+    
+    TOPIC -->|dim_clientes| T1[Topic: dim_clientes]
+    TOPIC -->|dim_productos| T2[Topic: dim_productos]
+    TOPIC -->|dim_empleados| T3[Topic: dim_empleados]
+    TOPIC -->|fact_ventas| T4[Topic: fact_ventas]
+    TOPIC -->|fact_operaciones| T5[Topic: fact_operaciones]
+    TOPIC -->|fact_presupuesto| T6[Topic: fact_presupuesto]
+    
+    T1 --> CH
+    T2 --> CH
+    T3 --> CH
+    T4 --> CH
+    T5 --> CH
+    T6 --> CH
+    
+    CH --> QUERY[Usuario ejecuta consulta
+en Superset]
+    QUERY --> CACHE{¿En Redis?}
+    CACHE -->|Sí| FAST[Retorna desde caché]
+    CACHE -->|No| SLOW[Consulta ClickHouse
+Guarda en caché]
+    SLOW --> FAST
+    FAST --> DASH[Dashboard visualiza]
+    DASH --> END([Fin: Insights para negocio])
 ```
 
-## 4. Inicialización con Docker Compose
+## 4. Diagrama de Flujo de Inicialización (Docker Compose)
 
 ```mermaid
 flowchart TD
-    A[docker compose up] --> B[PostgreSQL]
-    A --> C[Redpanda]
-    A --> D[ClickHouse]
-    A --> E[Redis]
-    A --> F[Debezium]
-    A --> G[Superset]
-    B & C & D & E & F & G --> H[platform_init]
-    H --> I{Healthy?}
-    I -->|Sí| DONE
+    A[docker compose up -d] --> B[PostgreSQL inicia
++ datos dummy]
+    A --> C[Redpanda inicia]
+    A --> D[ClickHouse inicia]
+    A --> E[Redis inicia]
+    A --> F[Debezium inicia]
+    A --> G[Superset inicia]
+
+    B --> H[platform_init espera]
+    C --> H
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+
+    H --> I{¿Servicios OK?}
     I -->|No| H
+    I -->|Sí| J[Inicialización completada]
 ```
 
-## 5. Fases del Proyecto
+## 6. Tabla de Fases del Proyecto
 
 | # | Fase | Descripción | Estado |
 |---|------|-------------|--------|
-| 1 | Infraestructura base | Docker Compose completo | ✅ |
-| 2 | CDC con Debezium | Replicación lógica de 6 tablas | ✅ |
-| 3 | Datos dummy | Datos de prueba end-to-end | ✅ |
-| 4 | ClickHouse → Superset | Conexión vía API REST | ✅ |
-| 5 | Dashboards BI | 7 dashboards importados | ✅ |
-| 6 | Init automatizado | Orquestación completa | ✅ |
-| 7 | Alertas y correos | Superset Alerts & Reports | 🔲 |
-| 8 | Monitoreo | Salud de la plataforma | 🔲 |
-| 9 | Authentik | SSO / IdP | 🔲 |
-|10 | API Gateway | Reverse proxy + TLS | 🔲 |
-|11 | Hardening | Seguridad producción | 🔲 |
-|12 | Observabilidad | Prometheus + Grafana | 🔲 |
+| 1 | Infraestructura base | Docker Compose con PostgreSQL, Redpanda, Debezium, ClickHouse, Redis, Superset | ✅ Completado |
+| 2 | CDC con Debezium | Replicación lógica de 6 tablas del schema analytics | ✅ Completado |
+| 3 | Datos dummy | Tablas y datos de prueba end-to-end | ✅ Completado |
+| 4 | Conexión ClickHouse → Superset | Script automático vía API REST | ✅ Completado |
+| 5 | Dashboards BI | 7 dashboards importados automáticamente | ✅ Completado |
+| 6 | Init automatizado | Orquestación completa | ✅ Completado |
+| 7 | Alertas y correos | Superset Alerts & Reports con SMTP | ⬜ Siguiente |
+| 8 | Dashboard de monitoreo | Salud de la plataforma | ⬜ Pendiente |
+| 9 | Authentik (SSO/IdP) | OIDC / SAML para Superset | ⬜ Pendiente |
+|10 | API Gateway | Traefik o Nginx | ⬜ Pendiente |
+|11 | Hardening producción | Seguridad y backups | ⬜ Pendiente |
+|12 | Observabilidad | Prometheus + Grafana | ⬜ Futuro |
 
-## 6. Servicios del Stack
+## 7. Servicios del Stack
 
 | Servicio | Imagen | Puerto | Rol |
 |--------|--------|--------|-----|
-| postgres | postgres:16 | 5432 | OLTP + WAL |
-| redpanda | redpandadata/redpanda:v23.3.10 | 9092 | Kafka |
-| debezium | debezium/connect:2.5 | 8083 | CDC |
-| clickhouse | clickhouse-server | 8123 / 9000 | OLAP |
-| redis | redis:7 | 6379 | Cache |
+| postgres | postgres:16 | 5432 | Fuente OLTP, WAL lógico |
+| redpanda | redpandadata/redpanda:v23.3.10 | 9092 | Broker Kafka-compatible |
+| debezium | debezium/connect:2.5 | 8083 | CDC connector |
+| clickhouse | clickhouse/clickhouse-server | 8123 / 9000 | OLAP columnar |
+| redis | redis:7 | 6379 | Cache Superset |
 | superset | apache/superset:6.0.0 | 8088 | BI |
-| platform_init | custom | — | Init |
+| platform_init | custom | — | Orquestador |
 
-## 7. Dashboards en Superset
+## 8. Conectores Debezium activos
 
-| Dashboard | Archivo |
-|----------|---------|
+```text
+analytics-dim-clientes      → topic: analytics.analytics.dim_clientes
+analytics-dim-productos     → topic: analytics.analytics.dim_productos
+analytics-dim-empleados     → topic: analytics.analytics.dim_empleados
+analytics-fact-ventas       → topic: analytics.analytics.fact_ventas
+analytics-fact-operaciones  → topic: analytics.analytics.fact_operaciones
+analytics-fact-presupuesto  → topic: analytics.analytics.fact_presupuesto
+```
+
+## 9. Dashboards importados en Superset
+
+| Dashboard | Archivo ZIP |
+|----------|-------------|
 | Ventas | dashboard_ventas.zip |
 | Operaciones | dashboard_operaciones.zip |
 | Clientes | dashboard_clientes.zip |
@@ -126,11 +173,3 @@ flowchart TD
 | Empleados | dashboard_empleados.zip |
 | Presupuesto | dashboard_presupuesto.zip |
 | Analytics General | dashboard_analytics_general.zip |
-
----
-
-✅ **Cambios realizados**
-- Todos los diagramas Mermaid ahora están dentro de bloques ```mermaid
-- Todas las tablas están convertidas a formato Markdown válido
-- Se corrigieron encabezados y saltos de sección
-
