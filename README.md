@@ -221,7 +221,7 @@ analytics-fact-presupuesto  → topic: analytics.analytics.fact_presupuesto
 | Presupuesto | dashboard_presupuesto.zip |
 | Analytics General | dashboard_analytics_general.zip |
 
-10. Estructura de Directorios
+## 10. Estructura de Directorios
 ```text
 data-platform/
 ├── docker-compose.yml
@@ -254,7 +254,7 @@ data-platform/
 │       └── dashboard_analytics_general.zip
 ```
 
-11. Comandos de operación
+## 11. Comandos de operación
 
 🔄 Ciclo completo (bajar → limpiar → levantar)
 ```bash
@@ -301,7 +301,7 @@ docker compose restart platform_init
 docker compose restart superset
 ```
 
-12. Diagrama de Flujo de Alertas (Fase 7)
+## 12. Diagrama de Flujo de Alertas (Fase 7)
 
 ```mermaid
 flowchart TD
@@ -335,7 +335,7 @@ alerta en su correo]
     J --> C
 ```
 
-13. Variables de entorno (.env)
+## 13. Variables de entorno (.env)
 
 ```env
 # PostgreSQL
@@ -357,41 +357,37 @@ ADMIN_FIRST_NAME=Admin
 ADMIN_LAST_NAME=User
 ```
 
-14. Requisitos de infraestructura
-Entorno	CPU	RAM	Disco
-Dev / pruebas	4 cores	8 GB	50 GB SSD
-QA / pre-prod	8 cores	16 GB	100 GB SSD
-Producción inicial	16 cores	32 GB	300 GB SSD (IOPS altos)
+## 14. Requisitos de infraestructura
 
-15. Troubleshooting rápido
-Síntoma	Causa probable	Solución
-platform_init termina con error	Superset no listo aún	Aumentar sleep en el until del init.sh
-Dashboards no importan	ZIPs no encontrados o mal nombrados	ls superset/exports/ y verificar nombres exactos
-ClickHouse 409 en conexión	Conexión ya existe	Normal, ignorar
-Debezium 404 al registrar	Debezium aún arrancando	El script reintenta automáticamente
-Superset sin charts	UUID del dashboard no coincide con datasource	Re-exportar desde Superset con datos correctos
-Celery worker no procesa alertas	Redis no conectado o celery no arranca	docker logs superset_worker
+| Entorno              | CPU      | RAM   | Disco                     |
+|----------------------|----------|-------|---------------------------|
+| Dev / pruebas        | 4 cores  | 8 GB  | 50 GB SSD                |
+| QA / pre-prod        | 8 cores  | 16 GB | 100 GB SSD               |
+| Producción inicial   | 16 cores | 32 GB | 300 GB SSD (IOPS altos)  |
 
-16. Flujo completo resumido (visión 30 segundos)
+## 15. Troubleshooting rápido
+
+| Síntoma                              | Causa probable                                      | Solución                                                         |
+|-------------------------------------|----------------------------------------------------|------------------------------------------------------------------|
+| platform_init termina con error     | Superset no listo aún                               | Aumentar `sleep` en el `until` del `init.sh`                    |
+| Dashboards no importan              | ZIPs no encontrados o mal nombrados                | `ls superset/exports/` y verificar nombres exactos              |
+| ClickHouse 409 en conexión          | Conexión ya existe                                 | Normal, ignorar                                                 |
+| Debezium 404 al registrar           | Debezium aún arrancando                            | El script reintenta automáticamente                             |
+| Superset sin charts                 | UUID del dashboard no coincide con datasource      | Re-exportar desde Superset con datos correctos                  |
+| Celery worker no procesa alertas    | Redis no conectado o celery no arranca             | `docker logs superset_worker`                                   |
+
+
+## 16. Flujo completo resumido (visión 30 segundos)
 
 ```mermaid
 flowchart LR
-    START((🗄️ PostgreSQL))
-6 tablas
-CDC activado
-    START -->|WAL| CDC((🔄 Debezium))
-2.5 connect
-    CDC -->|eventos| KAFKA((📨 Redpanda))
-topics por tabla
-    KAFKA -->|consumo| CH((⚡ ClickHouse))
-OLAP columnar
-    CH -->|SQL| BI((📊 Superset))
-Dashboards + cache
-    BI -->|email| ALERT((📧 Alertas))
-notificaciones
-    BI -->|visualización| USER((👤 Usuarios))
-insights de negocio
-```
+    START((🗄️ PostgreSQL\n6 tablas\nCDC activado))
+    START -->|WAL| CDC((🔄 Debezium\n2.5 Connect))
+    CDC -->|eventos| KAFKA((📨 Redpanda\ntopics por tabla))
+    KAFKA -->|consumo| CH((⚡ ClickHouse\nOLAP columnar))
+    CH -->|SQL| BI((📊 Superset\nDashboards + cache))
+    BI -->|email| ALERT((📧 Alertas\nnotificaciones))
+    BI -->|visualización| USER((👤 Usuarios\ninsights de negocio))
 
 📌 Notas importantes
 
