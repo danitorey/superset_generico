@@ -1,42 +1,14 @@
 [
   {
-    "active": false,
-    "changed_by": {
-      "first_name": "Admin",
-      "last_name": "User"
-    },
-    "changed_on": "2026-04-25T16:13:54.810640",
-    "changed_on_delta_humanized": "27 minutes ago",
-    "chart_id": 33,
-    "created_by": {
-      "first_name": "Admin",
-      "last_name": "User"
-    },
-    "created_on": "2026-04-25T16:02:30.112614",
-    "creation_method": "alerts_reports",
-    "crontab": "*/10 * * * *",
-    "crontab_humanized": "Every 10 minutes",
-    "dashboard_id": null,
-    "description": "Empleados activos que se tienen mas de 0, solo prueba",
-    "extra": {},
-    "id": 1,
-    "last_eval_dttm": "2026-04-25T16:10:37.311047",
-    "last_state": "Success",
     "name": "Alerta de empleados activoss",
-    "owners": [
-      {
-        "first_name": "Admin",
-        "id": 1,
-        "last_name": "User"
-      }
-    ],
-    "recipients": [
-      {
-        "id": 4,
-        "type": "Email"
-      }
-    ],
-    "timezone": "America/Bahia_Banderas",
-    "type": "Alert"
+    "type": "Alert",
+    "active": false,
+    "crontab": "*/10 * * * *",
+    "owners": [1],
+    "chart": 33,
+    "database": 1,
+    "sql": "SELECT COUNT(*) FROM dim_empleados WHERE activo = 1",
+    "description": "Empleados activos que se tienen mas de 0, solo prueba",
+    "timezone": "America/Bahia_Banderas"
   }
 ]
