@@ -1,0 +1,46 @@
+[
+  {
+    "active": false,
+    "changed_by": {
+      "first_name": "Admin",
+      "last_name": "User"
+    },
+    "changed_on": "2026-04-25T16:13:52.270260",
+    "changed_on_delta_humanized": "27 minutes ago",
+    "chart_id": null,
+    "created_by": {
+      "first_name": "Admin",
+      "last_name": "User"
+    },
+    "created_on": "2026-04-25T16:05:37.948054",
+    "creation_method": "alerts_reports",
+    "crontab": "*/10 * * * *",
+    "crontab_humanized": "Every 10 minutes",
+    "dashboard_id": 5,
+    "description": "Todos los d\u00edas en la ma\u00f1ana ver como amanecimos de empleados",
+    "extra": {
+      "dashboard": {
+        "anchor": ""
+      }
+    },
+    "id": 2,
+    "last_eval_dttm": "2026-04-25T16:10:35.535419",
+    "last_state": "Success",
+    "name": "Reporte de Recursos Humanos",
+    "owners": [
+      {
+        "first_name": "Admin",
+        "id": 1,
+        "last_name": "User"
+      }
+    ],
+    "recipients": [
+      {
+        "id": 5,
+        "type": "Email"
+      }
+    ],
+    "timezone": "America/Bahia_Banderas",
+    "type": "Report"
+  }
+]
