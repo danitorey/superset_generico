@@ -45,7 +45,7 @@ if ya_existe:
 
 payload = {
     "database_name": "ClickHouse Analytics",
-    "sqlalchemy_uri": "clickhousedb://default:clickhouse123@clickhouse:8123/analytics",
+    "sqlalchemy_uri": "clickhouse://default:clickhouse123@clickhouse:9000/analytics",
     "expose_in_sqllab": True,
     "allow_run_async": False,
     "extra": "{}"

@@ -2,12 +2,13 @@
 -- 02_clickhouse_dummy.sql
 -- Bootstrap idempotente para ClickHouse con tablas, colas Kafka,
 -- Materialized Views y Vistas.
--- IDEMPOTENTE: usa CREATE TABLE IF NOT EXISTS y CREATE ... IF NOT EXISTS
--- en todos los objetos — seguro de ejecutar múltiples veces.
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS analytics;
 
+-- ============================================================
+-- TABLA dim_clientes
+-- ============================================================
 CREATE TABLE IF NOT EXISTS analytics.dim_clientes
 (
     id UUID,
@@ -49,6 +50,9 @@ SELECT id, nombre, sector, region, tipo, activo, created_at
 FROM analytics.dim_clientes FINAL
 WHERE deleted = 0;
 
+-- ============================================================
+-- TABLA dim_productos
+-- ============================================================
 CREATE TABLE IF NOT EXISTS analytics.dim_productos
 (
     id UUID,
@@ -90,6 +94,9 @@ SELECT id, nombre, categoria, unidad, precio, activo, created_at
 FROM analytics.dim_productos FINAL
 WHERE deleted = 0;
 
+-- ============================================================
+-- TABLA dim_empleados
+-- ============================================================
 CREATE TABLE IF NOT EXISTS analytics.dim_empleados
 (
     id UUID,
@@ -133,6 +140,9 @@ SELECT id, nombre, area, puesto, nivel, activo, fecha_ingreso, created_at
 FROM analytics.dim_empleados FINAL
 WHERE deleted = 0;
 
+-- ============================================================
+-- TABLA fact_ventas (con columna region)
+-- ============================================================
 CREATE TABLE IF NOT EXISTS analytics.fact_ventas
 (
     id UUID,
@@ -145,6 +155,7 @@ CREATE TABLE IF NOT EXISTS analytics.fact_ventas
     estatus String,
     fecha_venta DateTime,
     created_at DateTime,
+    region String DEFAULT 'DESCONOCIDA',
     deleted UInt8 DEFAULT 0
 )
 ENGINE = ReplacingMergeTree(deleted)
@@ -162,6 +173,7 @@ CREATE TABLE IF NOT EXISTS analytics.kafka_fact_ventas
     estatus String,
     fecha_venta DateTime,
     created_at DateTime,
+    region String,
     deleted UInt8
 )
 ENGINE = Kafka
@@ -172,14 +184,17 @@ SETTINGS kafka_broker_list = 'redpanda:9092',
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.fact_ventas_mv
 TO analytics.fact_ventas AS
-SELECT id, id_cliente, id_producto, id_empleado, cantidad, monto, descuento, estatus, fecha_venta, created_at, if(deleted = 1, 1, 0) AS deleted
+SELECT id, id_cliente, id_producto, id_empleado, cantidad, monto, descuento, estatus, fecha_venta, created_at, region, if(deleted = 1, 1, 0) AS deleted
 FROM analytics.kafka_fact_ventas;
 
 CREATE VIEW IF NOT EXISTS analytics.vw_fact_ventas AS
-SELECT id, id_cliente, id_producto, id_empleado, cantidad, monto, descuento, estatus, fecha_venta, created_at
+SELECT id, id_cliente, id_producto, id_empleado, cantidad, monto, descuento, estatus, fecha_venta, created_at, region
 FROM analytics.fact_ventas FINAL
 WHERE deleted = 0;
 
+-- ============================================================
+-- TABLA fact_operaciones
+-- ============================================================
 CREATE TABLE IF NOT EXISTS analytics.fact_operaciones
 (
     id UUID,
@@ -229,6 +244,9 @@ SELECT id, id_cliente, id_empleado, tipo, descripcion, estatus, prioridad, tiemp
 FROM analytics.fact_operaciones FINAL
 WHERE deleted = 0;
 
+-- ============================================================
+-- TABLA fact_presupuesto
+-- ============================================================
 CREATE TABLE IF NOT EXISTS analytics.fact_presupuesto
 (
     id UUID,
@@ -274,6 +292,9 @@ SELECT id, area, mes, anio, asignado, ejercido, comprometido, estatus, created_a
 FROM analytics.fact_presupuesto FINAL
 WHERE deleted = 0;
 
+-- ============================================================
+-- Vistas analíticas
+-- ============================================================
 CREATE OR REPLACE VIEW analytics.vw_ventas_por_producto AS
 SELECT
     p.nombre AS nombre_producto,
@@ -366,3 +387,47 @@ SELECT
     'Validación de empleados' AS observacion
 FROM analytics.vw_dim_empleados
 GROUP BY fecha;
+
+-- ============================================================
+-- TABLA user_region_mapping (desde CDC)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS analytics.user_region_mapping
+(
+    id UUID,
+    email String,
+    username String,
+    region String,
+    is_admin UInt8,
+    created_at DateTime,
+    updated_at DateTime,
+    deleted UInt8 DEFAULT 0
+)
+ENGINE = ReplacingMergeTree(deleted)
+ORDER BY id;
+
+CREATE TABLE IF NOT EXISTS analytics.kafka_user_region_mapping
+(
+    id UUID,
+    email String,
+    username String,
+    region String,
+    is_admin UInt8,
+    created_at DateTime,
+    updated_at DateTime,
+    deleted UInt8
+)
+ENGINE = Kafka
+SETTINGS kafka_broker_list = 'redpanda:9092',
+         kafka_topic_list = 'analytics.analytics.user_region_mapping',
+         kafka_group_name = 'clickhouse_analytics',
+         kafka_format = 'JSONEachRow';
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS analytics.user_region_mapping_mv
+TO analytics.user_region_mapping AS
+SELECT id, email, username, region, is_admin, created_at, updated_at, if(deleted = 1, 1, 0) AS deleted
+FROM analytics.kafka_user_region_mapping;
+
+CREATE VIEW IF NOT EXISTS analytics.vw_user_region_mapping AS
+SELECT id, email, username, region, is_admin, created_at, updated_at
+FROM analytics.user_region_mapping FINAL
+WHERE deleted = 0;

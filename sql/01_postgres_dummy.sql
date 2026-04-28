@@ -205,3 +205,30 @@ SELECT * FROM (VALUES
     ('RRHH',        4, 2026, 250000::NUMERIC, 100000::NUMERIC, 40000::NUMERIC, 'Normal')
 ) AS v(area, mes, anio, asignado, ejercido, comprometido, estatus)
 WHERE NOT EXISTS (SELECT 1 FROM analytics.fact_presupuesto LIMIT 1);
+
+-- ============================================================
+-- TABLA user_region_mapping (pivote para RLS)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS analytics.user_region_mapping (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email VARCHAR(255) NOT NULL UNIQUE,
+    username VARCHAR(100) NOT NULL,
+    region VARCHAR(50) NOT NULL,
+    is_admin BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+ALTER TABLE analytics.user_region_mapping REPLICA IDENTITY FULL;
+
+-- Insertar datos iniciales
+INSERT INTO analytics.user_region_mapping (email, username, region, is_admin) VALUES
+    ('norte@empresa.com', 'analista_norte', 'NORTE', FALSE),
+    ('sur@empresa.com', 'analista_sur', 'SUR', FALSE),
+    ('este@empresa.com', 'analista_este', 'ESTE', FALSE),
+    ('oeste@empresa.com', 'analista_oeste', 'OESTE', FALSE),
+    ('gerente@empresa.com', 'gerente_ventas', 'TODAS', TRUE),
+    ('admin@example.com', 'admin', 'TODAS', TRUE)
+ON CONFLICT (email) DO UPDATE SET
+    region = EXCLUDED.region,
+    updated_at = NOW();

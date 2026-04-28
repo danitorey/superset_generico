@@ -61,6 +61,7 @@ upsert_connector "analytics-dim-empleados"    "analytics.dim_empleados"    "anal
 upsert_connector "analytics-fact-ventas"      "analytics.fact_ventas"      "analytics_fact_ventas"
 upsert_connector "analytics-fact-operaciones" "analytics.fact_operaciones" "analytics_fact_operaciones"
 upsert_connector "analytics-fact-presupuesto" "analytics.fact_presupuesto" "analytics_fact_presupuesto"
+upsert_connector "analytics-user-region-mapping" "analytics.user_region_mapping" "analytics_user_region_mapping"
 
 echo ""
 echo "⏳ Esperando 15 segundos para que los topics se creen..."

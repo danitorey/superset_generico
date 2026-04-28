@@ -88,14 +88,10 @@ services:
       - clickhouse_data:/var/lib/clickhouse
       - ./sql/02_clickhouse_dummy.sql:/docker-entrypoint-initdb.d/02_clickhouse_dummy.sql:ro
       - ./clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
+      - ./sql/05_rls_setup.sql:/docker-entrypoint-initdb.d/05_rls_setup.sql:ro
     networks:
       - data_platform_network
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q Ok"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
 
   redis:
     image: redis:7
@@ -121,7 +117,7 @@ services:
       postgres:
         condition: service_healthy
       clickhouse:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     volumes:
@@ -143,10 +139,7 @@ services:
       dockerfile: Dockerfile.superset
     container_name: superset_worker
     env_file: .env
-    command: >
-      celery --app=superset.tasks.celery_app:app worker
-      --loglevel=INFO
-      --concurrency=2
+    command: celery --app=superset.tasks.celery_app:app worker --loglevel=INFO --concurrency=2
     volumes:
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py
     depends_on:
@@ -164,10 +157,7 @@ services:
       dockerfile: Dockerfile.superset
     container_name: superset_beat
     env_file: .env
-    command: >
-      celery --app=superset.tasks.celery_app:app beat
-      --loglevel=INFO
-      --schedule=/tmp/celerybeat-schedule
+    command: celery --app=superset.tasks.celery_app:app beat --loglevel=INFO --schedule=/tmp/celerybeat-schedule
     volumes:
       - ./superset/superset_config.py:/app/pythonpath/superset_config.py
     depends_on:
@@ -188,7 +178,7 @@ services:
       postgres:
         condition: service_healthy
       clickhouse:
-        condition: service_healthy
+        condition: service_started
       debezium:
         condition: service_started
       superset:
@@ -201,6 +191,9 @@ services:
       - ./superset/exports:/app/exports:ro
     environment:
       PGPASSWORD: postgres123
+      CLICKHOUSE_PASSWORD: clickhouse123
+      SUPERSET_ADMIN_USER: admin
+      SUPERSET_ADMIN_PASSWORD: admin
     networks:
       - data_platform_network
     restart: "no"
@@ -209,42 +202,38 @@ services:
       - |
         set -euo pipefail
         echo "⏳ Iniciando configuración de la plataforma..."
-
-        echo "🗄️  Creando base de datos para Superset..."
+        echo "🗄️ Creando base de datos para Superset..."
         psql -h postgres -U postgres -d postgres -c "CREATE DATABASE superset;" || true
         echo "✅ Base superset lista"
-
         echo "📦 Creando tablas dummy en PostgreSQL..."
         until psql -h postgres -U postgres -d postgres -f /sql/01_postgres_dummy.sql; do
           echo "⏳ Esperando PostgreSQL..."
           sleep 2
         done
         echo "✅ PostgreSQL listo"
-
-        echo "🏗️  Esperando ClickHouse..."
+        echo "🏗️ Esperando ClickHouse..."
         until curl -sf "http://clickhouse:8123/ping" | grep -q Ok; do
           echo "⏳ Esperando ClickHouse..."
           sleep 2
         done
         echo "✅ ClickHouse listo"
-
         echo "🔌 Registrando conectores Debezium..."
         bash /sh/03_debezium_connectors.sh || true
         echo "✅ Debezium listo"
-
         echo "⏳ Esperando que Superset esté listo..."
         until curl -fsS "http://superset:8088/health" | grep -q "OK"; do
           echo "⏳ Superset no listo aún..."
           sleep 5
         done
         echo "✅ Superset listo"
-
-        echo "🔐 Configurando RLS..."
-        python3 /scripts/setup_rls.py || true
-
+        echo "👥 Creando usuarios en Superset..."
+        python3 /scripts/create_superset_users.py || true
+        echo "✅ Usuarios creados"
+        echo "🔐 Configurando RLS nativo en Superset..."
+        python3 /scripts/setup_superset_rls.py || true
+        echo "✅ RLS nativo configurado"
         echo "📦 Parcheando ZIPs con password de ClickHouse..."
         mkdir -p /tmp/exports_patched
-
         python3 << 'PYEOF'
         import zipfile, os, re, glob
         exports_dir = "/app/exports"
@@ -270,7 +259,6 @@ services:
                         zout.writestr(item, data)
         print("✅ Todos los ZIPs parcheados")
         PYEOF
-
         echo "📊 Importando dashboards..."
         for ZIP in /tmp/exports_patched/*.zip; do
           if [ -f "$ZIP" ]; then
@@ -279,15 +267,22 @@ services:
           fi
         done
         echo "✅ Dashboards importados"
-
+        echo "📢 Publicando dashboards..."
+        python3 /scripts/publish_dashboards.py || true
+        echo "✅ Dashboards publicados"
         echo "🔔 Importando Alertas y Reportes..."
         python3 /scripts/import_alerts_reports_final.py || true
-
         echo "📊 Configurando Dashboard de Monitoreo..."
         python3 /scripts/setup_monitoring_dashboard.py || true
-
         echo ""
         echo "🚀 Plataforma lista!"
+        echo ""
+        echo "🔐 RLS activo - Usuarios para pruebas:"
+        echo "   analista_norte / norte123 → solo ve región NORTE"
+        echo "   analista_sur / sur123 → solo ve región SUR"
+        echo "   analista_este / este123 → solo ve región ESTE"
+        echo "   analista_oeste / oeste123 → solo ve región OESTE"
+        echo "   gerente_ventas / gerente123 → ve todas las regiones"
 
 networks:
   data_platform_network:
