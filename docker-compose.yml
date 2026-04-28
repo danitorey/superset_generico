@@ -220,6 +220,16 @@ services:
         echo "🔌 Registrando conectores Debezium..."
         bash /sh/03_debezium_connectors.sh || true
         echo "✅ Debezium listo"
+        echo "🏗️  Esperando datos en ClickHouse..."
+        sleep 15
+        echo "🔄 Actualizando regiones en ClickHouse..."
+        docker exec clickhouse clickhouse-client --query "
+        ALTER TABLE analytics.fact_ventas UPDATE region = 'NORTE' WHERE (cityHash64(toString(id))) % 4 = 0;
+        ALTER TABLE analytics.fact_ventas UPDATE region = 'SUR' WHERE (cityHash64(toString(id))) % 4 = 1;
+        ALTER TABLE analytics.fact_ventas UPDATE region = 'ESTE' WHERE (cityHash64(toString(id))) % 4 = 2;
+        ALTER TABLE analytics.fact_ventas UPDATE region = 'OESTE' WHERE (cityHash64(toString(id))) % 4 = 3;
+        " || true
+        echo "✅ Regiones actualizadas"
         echo "⏳ Esperando que Superset esté listo..."
         until curl -fsS "http://superset:8088/health" | grep -q "OK"; do
           echo "⏳ Superset no listo aún..."

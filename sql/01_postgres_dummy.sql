@@ -101,7 +101,7 @@ SELECT * FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM analytics.dim_empleados LIMIT 1);
 
 -- ============================================================
--- TABLA 4 — fact_ventas
+-- TABLA 4 — fact_ventas (CON COLUMNA region)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS analytics.fact_ventas (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -113,12 +113,13 @@ CREATE TABLE IF NOT EXISTS analytics.fact_ventas (
     descuento   NUMERIC(5,2) DEFAULT 0,
     estatus     VARCHAR(50),
     fecha_venta TIMESTAMP DEFAULT NOW(),
-    created_at  TIMESTAMP DEFAULT NOW()
+    created_at  TIMESTAMP DEFAULT NOW(),
+    region      VARCHAR(50) DEFAULT 'DESCONOCIDA'
 );
 
 ALTER TABLE analytics.fact_ventas REPLICA IDENTITY FULL;
 
-INSERT INTO analytics.fact_ventas (id_cliente, id_producto, id_empleado, cantidad, monto, descuento, estatus, fecha_venta)
+INSERT INTO analytics.fact_ventas (id_cliente, id_producto, id_empleado, cantidad, monto, descuento, estatus, fecha_venta, region)
 SELECT
     (SELECT id FROM analytics.dim_clientes ORDER BY RANDOM() LIMIT 1),
     (SELECT id FROM analytics.dim_productos ORDER BY RANDOM() LIMIT 1),
@@ -127,7 +128,8 @@ SELECT
     ROUND((RANDOM() * 50000 + 500)::NUMERIC, 2),
     ROUND((RANDOM() * 15)::NUMERIC, 2),
     (ARRAY['Pendiente','Pagada','Cancelada','En proceso'])[FLOOR(RANDOM()*4+1)],
-    NOW() - (FLOOR(RANDOM() * 180) || ' days')::INTERVAL
+    NOW() - (FLOOR(RANDOM() * 180) || ' days')::INTERVAL,
+    (ARRAY['NORTE', 'SUR', 'ESTE', 'OESTE'])[FLOOR(RANDOM()*4+1)]
 FROM generate_series(1, 80)
 WHERE NOT EXISTS (SELECT 1 FROM analytics.fact_ventas LIMIT 1);
 
