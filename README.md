@@ -1,6 +1,6 @@
 # 🏗️ Plataforma de Datos OLTP → CDC → OLAP → BI
 
-> **Stack:** PostgreSQL 16 · Debezium 2.5 · Redpanda (Kafka-compatible) · ClickHouse · Apache Superset 6.0 · Redis · Docker Compose
+> **Stack:** PostgreSQL 16 · Debezium 2.5 · Redpanda (Kafka-compatible) · ClickHouse · Cube · Trino · Apache Superset 6.0 · Redis · Docker Compose
 
 ---
 
@@ -18,38 +18,48 @@ Diseñar e implementar una plataforma de datos moderna que permita:
 
 ## 2. Diagrama de Arquitectura (Mermaid)
 
-```mermaid
 flowchart TB
     subgraph ORIGEN["📦 Origen de Datos (OLTP)"]
         PG[("PostgreSQL 16
-6 tablas analíticas")]
+        6 tablas analíticas")]
     end
 
     subgraph CDC["🔄 Captura de Cambios (CDC)"]
         DEB[Debezium Connect 2.5
-Conectores por tabla]
+        Conectores por tabla]
     end
 
     subgraph STREAMING["📨 Streaming / Mensajería"]
         RP[Redpanda
-Kafka-compatible
-Topics por tabla]
+        Kafka-compatible
+        Topics por tabla]
     end
 
     subgraph OLAP["⚡ Almacén Analítico (OLAP)"]
         CH[("ClickHouse
-Columnar
-Base analítica")]
+        Columnar
+        Base analítica")]
+    end
+
+    subgraph FEDERATION["🔗 Federación de Datos"]
+        TR[("Trino
+        Consultas multi-fuente")]
+    end
+
+    subgraph SEMANTIC["🧠 Capa Semántica"]
+        CB[Cube
+        Métricas centralizadas
+        RLS dinámico]
     end
 
     subgraph CACHE["💨 Capa de Caché"]
         RD[("Redis
-Cache de queries")]
+        Cache de queries")]
     end
 
     subgraph BI["📊 Capa de Visualización (BI)"]
         SUP[Apache Superset
-Dashboards BI]
+        Dashboards BI]
     end
 
     subgraph USERS["👥 Usuarios Finales"]
@@ -59,10 +69,13 @@ Dashboards BI]
     PG -->|WAL| DEB
     DEB -->|Eventos JSON CDC| RP
     RP -->|Consumo por tabla| CH
-    CH -->|Consultas OLAP| SUP
+    
+    CH -->|Datos analíticos| TR
+    TR -->|Unificar datos| CB
+    
+    CB -->|Métricas + RLS| SUP
     RD -->|Cache de resultados| SUP
     SUP -->|Dashboards / Reportes| USER
-```
 
 ## 3. Diagrama de Flujo de Datos (Secuencia completa)
 
@@ -181,11 +194,13 @@ flowchart TB
 | 5 | Dashboards BI | 7 dashboards importados automáticamente | ✅ Completado |
 | 6 | Init automatizado | Orquestación completa | ✅ Completado |
 | 7 | Alertas y correos | Superset Alerts & Reports con SMTP | ✅ Completado |
-| 8 | Dashboard de monitoreo | Salud de la plataforma | ⬜ Pendiente |
-| 9 | Authentik (SSO/IdP) | OIDC / SAML para Superset | ⬜ Pendiente |
-|10 | API Gateway | Traefik o Nginx | ⬜ Pendiente |
-|11 | Hardening producción | Seguridad y backups | ⬜ Pendiente |
-|12 | Observabilidad | Prometheus + Grafana | ⬜ Futuro |
+| 8 | Semantic Layer con Cube | Métricas centralizadas, RLS dinámico sin multiplicar conexiones | ⬜ Pendiente |
+| 9 | Federación con Trino | Consultas multi-fuente (ClickHouse + otras bases) | ⬜ Pendiente |
+|10 | Dashboard de monitoreo | Salud de la plataforma | ⬜ Pendiente |
+|11 | Authentik (SSO/IdP) | OIDC / SAML para Superset | ⬜ Pendiente |
+|12 | API Gateway | Traefik o Nginx | ⬜ Pendiente |
+|13 | Hardening producción | Seguridad y backups | ⬜ Pendiente |
+|14 | Observabilidad | Prometheus + Grafana | ⬜ Futuro |
 
 ## 7. Servicios del Stack
 
@@ -195,11 +210,13 @@ flowchart TB
 | redpanda | redpandadata/redpanda:v23.3.10 | 9092 | Broker Kafka-compatible |
 | debezium | debezium/connect:2.5 | 8083 | CDC connector |
 | clickhouse | clickhouse/clickhouse-server | 8123 / 9000 | OLAP columnar |
+| cube | cubejs/cube:latest | 4000 / 3000 | Semantic layer (métricas + RLS) |
+| trino | trinodb/trino:latest | 8080 | Federación multi-fuente |
 | redis | redis:7 | 6379 | Cache Superset |
 | superset | apache/superset:6.0.0 | 8088 | BI |
 | platform_init | custom | — | Orquestador |
 
-8. Conectores Debezium activos
+## 8. Conectores Debezium activos
 ```text
 analytics-dim-clientes      → topic: analytics.analytics.dim_clientes
 analytics-dim-productos     → topic: analytics.analytics.dim_productos
@@ -377,7 +394,82 @@ ADMIN_LAST_NAME=User
 | Celery worker no procesa alertas    | Redis no conectado o celery no arranca             | `docker logs superset_worker`                                   |
 
 
-## 16. Flujo completo resumido (visión 30 segundos)
+## 16. Evolución de la Plataforma
+
+### 🔐 El desafío del RLS (Row Level Security)
+
+En la arquitectura actual, ClickHouse aplica el RLS según el **usuario de conexión** a la base de datos. Para que diferentes usuarios de Superset vean diferentes regiones (NORTE, SUR, ESTE, OESTE), se requeriría:
+
+- Crear un usuario en ClickHouse por cada rol (ej. `analista_norte`, `analista_sur`)
+- Crear una conexión independiente en Superset por cada usuario
+- Esto **no escala**: 5 roles hoy, 50 mañana → 50 conexiones
+
+### ✅ Solución propuesta: Cube como Semantic Layer
+
+[Cube](https://cube.dev) se posiciona entre ClickHouse y Superset como una **capa semántica** que:
+
+- **Centraliza métricas**: Definimos "Ventas totales" una sola vez, se usa en todos los dashboards
+- **Aplica RLS dinámico**: Filtra por usuario SIN multiplicar conexiones ni usuarios en DB
+- **Cache inteligente**: Consultas repetitivas se sirven desde cache, reduciendo carga en ClickHouse
+- **Consistencia**: El mismo cálculo en todos los dashboards
+
+### 🌐 Federación con Trino
+
+[Trino](https://trino.io) permite consultar **múltiples fuentes de datos** con una sola consulta SQL:
+
+- ClickHouse (datos analíticos rápidos)
+- PostgreSQL (datos transaccionales)
+- Otras bases (MySQL, MongoDB, etc.)
+
+Ideal para:
+- Dashboards que cruzan datos de ventas (ClickHouse) con inventario (PostgreSQL)
+- Reportes ejecutivos que necesitan información consolidada de diferentes sistemas
+
+### 🎯 Nueva Arquitectura
+
+ClickHouse (rápido) ─┐
+├─→ Trino (federación) → Cube (métricas + RLS) → Superset
+PostgreSQL (transaccional) ─┘
+
+**Beneficios:**
+- Una sola conexión de Superset a Cube
+- RLS dinámico sin multiplicar usuarios
+- Consultas multi-fuente con Trino
+- Métricas centralizadas y consistentes
+
+## 17. Diagrama de Flujo con Semantic Layer (Cube + Trino)
+
+```mermaid
+flowchart LR
+    CH[("ClickHouse
+    Datos analíticos")]
+    
+    PG[("PostgreSQL
+    Datos transaccionales")]
+    
+    TRINO[("Trino
+    Federación multi-fuente")]
+    
+    CUBE[("Cube
+    Métricas + RLS")]
+
+    SUP[("Superset
+    Dashboards")]
+
+    USER[("👤 Usuario
+    analista_norte")]
+
+    CH -->|consulta| TRINO
+    PG -->|consulta| TRINO
+    TRINO -->|datos unificados| CUBE
+    
+    USER -->|login: norte@empresa.com| SUP
+    SUP -->|solicita dashboard| CUBE
+    CUBE -->|aplica filtro region='NORTE'| TRINO
+    CUBE -->|devuelve datos filtrados| SUP
+    SUP -->|visualiza| USER
+
+## ## Flujo completo resumido (visión 30 segundos)
 
 ```mermaid
 flowchart LR
@@ -421,3 +513,18 @@ docker logs -f platform_init
 http://localhost:8088
 # Usuario: admin / Contraseña: admin
 ```
+
+```markdown
+## 🔄 Próximos pasos
+
+### 🔐 RLS Dinámico con Cube
+- **Problema actual:** ClickHouse requiere un usuario por rol para aplicar RLS
+- **Solución:** Cube como capa intermedia que filtra por usuario sin multiplicar conexiones
+- **Beneficio:** Una sola conexión, escalable a cientos de usuarios
+
+### 🌐 Federación con Trino
+- **Caso de uso:** Dashboards que necesitan datos de ClickHouse + PostgreSQL + otras fuentes
+- **Ventaja:** Una sola consulta SQL unifica datos de múltiples sistemas
+
+
+
